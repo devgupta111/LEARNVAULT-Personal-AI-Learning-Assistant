@@ -1,0 +1,5 @@
+// Shared React components — added phase by phase
+// Phase 3: UploadForm, DocumentList
+// Phase 6: ChatWindow, MessageBubble, CitationBadge
+// Phase 8: QuizCard, ScoreDisplay
+// Phase 10: Navbar, Sidebar, LoadingSpinner

@@ -1,0 +1,5 @@
+// TypeScript type definitions — added phase by phase
+// Phase 2: auth.ts (User, LoginRequest, TokenResponse)
+// Phase 3: document.ts (Document, DocumentStatus)
+// Phase 6: chat.ts (Message, Session, Citation, SSEEvent)
+// Phase 8: quiz.ts (Quiz, Question, Attempt, Score)

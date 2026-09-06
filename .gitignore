@@ -1,0 +1,75 @@
+# -----------------------------------------------------------------------
+# .gitignore — Personal AI Learning Assistant
+# -----------------------------------------------------------------------
+
+# Secrets & Environment Files — NEVER commit secrets
+.env
+.env.*
+!.env.example
+*.env
+**/.env
+**/.env.*
+!**/.env.example
+
+# Local Databases — NEVER commit local DB with student data
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+test_temp.db
+data/*.db
+data/*.sqlite*
+data/*.db-journal
+
+# Private Notes & Reference
+Do not read/
+Donotread*
+
+# Uploaded documents & user files (keeps directory structure via .gitkeep)
+data/uploads/*
+!data/uploads/.gitkeep
+data/test_documents/*
+!data/test_documents/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.Python
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Tests & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node / Next.js
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+frontend/.env.local
+frontend/.env*.local
+
+# Docker & Logs
+*.log
+docker-data/
+postgres_data/
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+

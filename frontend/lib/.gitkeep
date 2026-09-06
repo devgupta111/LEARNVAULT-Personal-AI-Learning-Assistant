@@ -1,0 +1,5 @@
+// Utility functions and API client — added phase by phase
+// Phase 2: api.ts (axios/fetch client with JWT interceptor)
+// Phase 3: documents.ts (upload, list, status)
+// Phase 6: chat.ts (SSE stream handler)
+// Phase 8: quiz.ts (generate, submit)
