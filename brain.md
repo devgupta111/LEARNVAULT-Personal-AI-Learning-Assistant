@@ -1128,3 +1128,91 @@ RELIABLE > MANY FEATURES
 
 This is the locked V4 project brain. Do not expand the architecture
 unless implementation evidence requires it.
+
+------------------------------------------------------------------------
+
+# 15. Implementation Progress & Current Status
+
+## Current Status: DAY 2 COMPLETED & FULLY VERIFIED (141/141 Tests Passing)
+
+### IMPLEMENTED (Tested & Verified)
+
+#### Day 1 — Backend Foundation & PDF Extraction
+- **FastAPI Core**: Application lifecycle, CORS, health endpoint (`/health`), upload endpoint (`/documents/upload`), document status endpoint (`/documents/{document_id}`), and document list endpoint (`/documents`).
+- **Database Tracking**: Document model tracking status (`PROCESSING`, `READY`, `FAILED`), page count, filename, upload path, and timestamps (configured for PostgreSQL with SQLite fallback for local development).
+- **PDF Upload & Storage**: Validates PDF file signature, size limit (50 MB), and saves to `data/uploads/{document_id}.pdf`.
+- **PyMuPDF Extraction (`pdf_service.py`)**: Page-by-page extraction preserving 1-indexed page boundaries, detects scanned/image-only pages (<50 characters), and provides minimal whitespace and control character normalization.
+
+#### Day 2 — Text Cleaning, Parent-Child Chunking, Metadata & Local Embeddings
+- **Deep Text Cleaning (`cleaning_service.py`)**:
+  - Boundary-aware header/footer detection: analyzes only page boundaries (top 2 and bottom 2 non-empty lines) across >= 3 pages to detect running headers/footers without stripping body paragraphs or educational content.
+  - Normalizes line endings (`\r\n` / `\r` -> `\n`).
+  - Normalizes common typographical ligatures and quotes (`fi`, `fl`, `ff`, smart quotes, em-dashes).
+  - Repairs hyphenation line-break artifacts (`infor-\nmation` -> `information`).
+  - Collapses excessive internal whitespace while preserving paragraph and sentence structures.
+- **Hierarchical Parent-Child Chunking (`chunking_service.py`)**:
+  - **Parent Chunks**: 2,800 characters (~700 tokens), 200 character overlap. Captures broad contextual sections and maintains global page boundaries (`page_start`, `page_end`).
+  - **Child Chunks**: 800 characters (~200 tokens), 120 character overlap. Derived from parent text, sized for precise dense semantic retrieval.
+  - **Boundary Sensitivity**: Splits on paragraph breaks (`\n\n`) preferentially, falling back to sentence terminators (`.`, `!`, `?`) to preserve meaning.
+  - **Deterministic IDs**: Chunk IDs are stable across processes and runs using UUID5 on `NAMESPACE_DNS` seeded with SHA-256 hashes of chunk text:
+    - Parent ID: `uuid5(NAMESPACE_DNS, f"{document_id}|P|{index}|{sha256(text)}")`
+    - Child ID: `uuid5(NAMESPACE_DNS, f"{parent_id}|C|{index}|{sha256(text)}")`
+- **Chunk Metadata**:
+  Every child chunk carries:
+  ```json
+  {
+    "chunk_id": "<uuid5>",
+    "document_id": "<uuid4>",
+    "user_id": "dev-user-001",
+    "subject": "<subject_name>",
+    "page_start": 1,
+    "page_end": 1,
+    "parent_id": "<parent_uuid5>",
+    "text": "..."
+  }
+  ```
+- **Local Embedding Service (`embedding_service.py`)**:
+  - **Model**: `all-MiniLM-L6-v2` via `sentence-transformers` (runs 100% locally and offline; no API key, no account, no cost).
+  - **Embedding Dimension**: 384-dimensional fixed float vectors.
+  - **Performance Optimization**: Singleton lazy loading (loads once per process, cached in memory), batch processing with `BATCH_SIZE = 32`.
+  - **Clean Public Interface**: `embed_texts()`, `embed_chunks()`, `get_embedding_dimension()`, and `get_embedding_model()`.
+- **Pipeline Orchestration (`pipeline_service.py`)**:
+  - Full automated sequence: `extract_text_from_pdf` -> `clean_document_pages` -> `generate_chunks` -> `embed_chunks` -> saves JSON to `data/processed/{document_id}.json`.
+  - Integrated into FastAPI background task on upload.
+- **Local Processed Output (`data/processed/`)**:
+  - Structured JSON format containing document metadata, parent chunks, embedded child chunks, and pipeline execution statistics.
+- **Testing & Verification**:
+  - 141 automated tests in `backend/tests/` passing (100% pass rate).
+  - End-to-end verified on real course PDFs (`lec-1.pdf`, `Lec-2.pdf`, `Lec-3.pdf`).
+  - Negative test suite covering blank PDFs, corrupted files, and non-existent files.
+
+---
+
+### PLANNED / FUTURE (Do NOT Implement Until Designated Days)
+
+The following features belong strictly to later days and are deliberately NOT implemented yet:
+
+- **Day 3 — Vector Database (Qdrant)**:
+  - Setup local Qdrant collection (vector dimension 384, cosine distance).
+  - Payload indexing (`user_id`, `document_id`, `subject`).
+  - Upsert pipeline from `data/processed/` into Qdrant points.
+  - Dense vector similarity search with filters.
+- **Day 4 — Reranking & Retrieval Optimization**:
+  - Top-15 semantic retrieval from Qdrant.
+  - Cross-encoder reranker (`ms-marco-MiniLM-L-6-v2` or FlashRank) to rerank top candidates to top 3–5 chunks.
+  - Parent-context reconstruction (swapping retrieved child chunks for their rich parent text).
+- **Day 5 — Grounded LLM Generation & Citations**:
+  - LLM integration using preferred model (`openai/gpt-oss-120b`).
+  - Strict grounding prompt: answer only based on provided context; cite page numbers.
+  - Explicit refusal when context is insufficient.
+  - SSE streaming endpoint for real-time response delivery.
+- **Day 6 — Agentic Workflows**:
+  - **Query Router & Rewriter Agent**: Rewrite queries with history; route to direct chat, RAG, or quiz mode.
+  - **CRAG Agent**: Corrective retrieval evaluator; triggers one query reform/retry when retrieval is weak.
+  - **Hallucination & Citation Grader**: Validates generated answer against retrieved parent context; triggers one regeneration if unsupported.
+- **Day 7 — Adaptive Quiz System, Polish & Deployment**:
+  - Adaptive diagnostic quiz generation from study materials.
+  - Deterministic MCQ auto-grading.
+  - Next.js frontend integration.
+  - Full Docker compose deployment.
+

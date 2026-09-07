@@ -25,11 +25,16 @@ data/*.db-journal
 Do not read/
 Donotread*
 
-# Uploaded documents & user files (keeps directory structure via .gitkeep)
+# Uploaded documents & user files (keeps directory structure, tracks demo PDFs)
 data/uploads/*
 !data/uploads/.gitkeep
+!data/uploads/lec-1.pdf
+!data/uploads/Lec-2.pdf
 data/test_documents/*
 !data/test_documents/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
 
 # Python
 __pycache__/

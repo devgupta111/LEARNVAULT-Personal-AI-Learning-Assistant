@@ -16,14 +16,34 @@ import pytest
 
 
 def make_pdf_bytes(
-    text: str = "Lecture notes with sufficient content for testing and verification purposes.",
+    text: str = (
+        "Lecture notes on operating systems, processes, scheduling, and memory management. "
+        "An operating system manages hardware resources and provides services to applications. "
+        "A process is a program in execution; it needs CPU time, memory, and I/O access. "
+        "Process scheduling algorithms include FCFS, SJF, Round Robin, and Priority scheduling. "
+        "Memory management techniques include paging, segmentation, and virtual memory. "
+        "Virtual memory allows a process to use more address space than physical RAM allows. "
+        "File systems organize persistent data on disk using directories and inodes. "
+        "I/O management uses device drivers and interrupt handlers to communicate with hardware. "
+        "Concurrency requires synchronization primitives such as mutexes and semaphores. "
+        "Deadlocks occur when processes wait circularly for resources held by each other. "
+    ),
     num_pages: int = 1,
 ) -> bytes:
-    """Create a valid in-memory PDF with readable text."""
+    """
+    Create a valid in-memory PDF with readable text.
+
+    Uses insert_textbox so the full text body is stored on each page,
+    making it possible to extract enough characters to clear the chunking
+    threshold (child chunk size = 800 chars). insert_text only renders one
+    line and silently truncates the rest.
+    """
     doc = pymupdf.open()
-    for _ in range(num_pages):
+    for i in range(num_pages):
         page = doc.new_page()
-        page.insert_text((72, 72), text, fontsize=11)
+        rect = pymupdf.Rect(50, 50, page.rect.width - 50, page.rect.height - 50)
+        page_text = f"Section {i + 1} Content:\n{text}" if num_pages > 1 else text
+        page.insert_textbox(rect, page_text, fontsize=11)
     buf = io.BytesIO()
     doc.save(buf)
     doc.close()
@@ -120,7 +140,7 @@ class TestSuccessfulUpload:
         assert len(data["document_id"]) == 36
 
     def test_document_becomes_ready_after_processing(self, client):
-        pdf = make_pdf_bytes("DBMS lecture notes covering relational normalization and database design principles.")
+        pdf = make_pdf_bytes()
         response = client.post(
             "/documents/upload",
             data={"subject": "DBMS"},
@@ -137,10 +157,7 @@ class TestSuccessfulUpload:
         assert detail["subject"] == "DBMS"
 
     def test_multi_page_pdf(self, client):
-        pdf = make_pdf_bytes(
-            "Algorithm Design lecture content covering dynamic programming and divide and conquer strategies.",
-            num_pages=5,
-        )
+        pdf = make_pdf_bytes(num_pages=5)
         response = client.post(
             "/documents/upload",
             data={"subject": "DAA"},
@@ -154,7 +171,7 @@ class TestSuccessfulUpload:
         assert detail["page_count"] == 5
 
     def test_default_subject_is_general(self, client):
-        pdf = make_pdf_bytes("Some detailed content here for the default subject test with ample characters.")
+        pdf = make_pdf_bytes()
         response = client.post(
             "/documents/upload",
             files={"file": ("notes.pdf", pdf, "application/pdf")},

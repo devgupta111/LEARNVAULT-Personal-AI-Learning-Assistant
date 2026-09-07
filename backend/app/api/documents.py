@@ -22,6 +22,7 @@ from app.db.database import get_db, SessionLocal
 from app.models.document import Document
 from app.schemas.document import DocumentUploadResponse, DocumentSummary, DocumentDetail
 from app.services.pdf_service import extract_text_from_pdf, is_document_fully_scanned
+from app.services.pipeline_service import run_ingestion_pipeline
 from app.services.document_service import (
     get_document_by_id,
     get_all_documents,
@@ -37,70 +38,53 @@ ALLOWED_EXTENSIONS = {".pdf"}
 ALLOWED_MIME_TYPES = {"application/pdf"}
 
 
-def process_document_background(document_id: str, file_path: str) -> None:
+def process_document_background(document_id: str, file_path: str, subject: str = "General") -> None:
     """
-    Background task: extract text from the uploaded PDF and update document status.
+    Background task: run the full Day 2 ingestion pipeline.
+
+    Calls run_ingestion_pipeline() which handles:
+      - PDF extraction (Day 1 pdf_service)
+      - Deep text cleaning (Day 2 cleaning_service)
+      - Parent + child chunking (Day 2 chunking_service)
+      - Embedding generation (Day 2 embedding_service)
+      - Local JSON output to data/processed/
 
     This function creates its own database session because FastAPI background
-    tasks run after the HTTP response is sent — the request-scoped session
-    is already closed by then.
-
+    tasks run after the HTTP response is sent.
     SessionLocal is a module-level variable so tests can patch it.
     """
     db = SessionLocal()
     try:
-        pages = extract_text_from_pdf(file_path)
-
-        if is_document_fully_scanned(pages):
-            update_document_status(
-                db,
-                document_id,
-                status="FAILED",
-                error_message=(
-                    "Scanned/image-only PDF detected. "
-                    "Please upload a searchable PDF."
-                ),
-            )
-            logger.warning("Document %s is fully scanned → FAILED", document_id)
-            return
-
-        readable = [p for p in pages if not p["needs_ocr"]]
-        scanned = [p for p in pages if p["needs_ocr"]]
-
-        if scanned:
-            logger.info(
-                "Document %s: %d readable pages, %d scanned pages (skipped)",
-                document_id,
-                len(readable),
-                len(scanned),
-            )
-
+        result = run_ingestion_pipeline(
+            document_id=document_id,
+            file_path=file_path,
+            subject=subject,
+            user_id="dev-user",
+        )
         update_document_status(
             db,
             document_id,
             status="READY",
-            page_count=len(pages),
+            page_count=result["readable_pages"] + result["scanned_pages"],
         )
-        logger.info("Document %s → READY (%d pages)", document_id, len(pages))
+        logger.info(
+            "Document %s -> READY (%d parents, %d children, dim=%d)",
+            document_id,
+            result["total_parents"],
+            result["total_children"],
+            result["embedding_dimension"],
+        )
 
-    except FileNotFoundError:
-        logger.error("File not found for document %s: %s", document_id, file_path)
+    except (FileNotFoundError, ValueError) as exc:
+        logger.error("Pipeline error for document %s: %s", document_id, exc)
         update_document_status(
             db,
             document_id,
             status="FAILED",
-            error_message="File was not found during processing.",
-        )
-    except ValueError as exc:
-        logger.error("Invalid PDF for document %s: %s", document_id, exc)
-        update_document_status(
-            db,
-            document_id,
-            status="FAILED",
-            error_message="Could not read the PDF. The file may be corrupted or encrypted.",
+            error_message=str(exc),
         )
     except Exception as exc:
-        logger.exception("Unexpected error processing document %s", document_id)
+        logger.exception("Unexpected pipeline error for document %s", document_id)
         update_document_status(
             db,
             document_id,
@@ -187,7 +171,7 @@ async def upload_document(
         logger.error("Database error saving document: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to create document record.")
 
-    background_tasks.add_task(process_document_background, document_id, str(file_path))
+    background_tasks.add_task(process_document_background, document_id, str(file_path), subject)
 
     return DocumentUploadResponse(document_id=document_id, status="PROCESSING")
 

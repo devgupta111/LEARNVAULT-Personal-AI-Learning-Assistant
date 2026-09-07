@@ -19,6 +19,7 @@ class Settings(BaseSettings):
         "postgresql+psycopg2://postgres:postgres@localhost:5432/ai_learning_db"
     )
     UPLOAD_DIR: str = str(PROJECT_ROOT / "data" / "uploads")
+    PROCESSED_DIR: str = str(PROJECT_ROOT / "data" / "processed")
     MAX_FILE_SIZE_MB: int = 20
 
     @field_validator("UPLOAD_DIR", mode="after")
