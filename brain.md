@@ -1133,7 +1133,7 @@ unless implementation evidence requires it.
 
 # 15. Implementation Progress & Current Status
 
-## Current Status: DAY 2 COMPLETED & FULLY VERIFIED (141/141 Tests Passing)
+## Current Status: DAY 3 COMPLETED & FULLY VERIFIED (156/156 Tests Passing)
 
 ### IMPLEMENTED (Tested & Verified)
 
@@ -1161,7 +1161,7 @@ unless implementation evidence requires it.
   Every child chunk carries:
   ```json
   {
-    "chunk_id": "<uuid5>",
+    "child_id": "<uuid5>",
     "document_id": "<uuid4>",
     "user_id": "dev-user-001",
     "subject": "<subject_name>",
@@ -1177,14 +1177,33 @@ unless implementation evidence requires it.
   - **Performance Optimization**: Singleton lazy loading (loads once per process, cached in memory), batch processing with `BATCH_SIZE = 32`.
   - **Clean Public Interface**: `embed_texts()`, `embed_chunks()`, `get_embedding_dimension()`, and `get_embedding_model()`.
 - **Pipeline Orchestration (`pipeline_service.py`)**:
-  - Full automated sequence: `extract_text_from_pdf` -> `clean_document_pages` -> `generate_chunks` -> `embed_chunks` -> saves JSON to `data/processed/{document_id}.json`.
+  - Full automated sequence: `extract_text_from_pdf` -> `clean_document_pages` -> `generate_chunks` -> `embed_chunks` -> `upsert_document_chunks` -> saves JSON to `data/processed/{document_id}.json`.
   - Integrated into FastAPI background task on upload.
 - **Local Processed Output (`data/processed/`)**:
   - Structured JSON format containing document metadata, parent chunks, embedded child chunks, and pipeline execution statistics.
+
+#### Day 3 — Vector Database Integration (Qdrant)
+- **Qdrant Client & Service (`qdrant_service.py`)**:
+  - Environment-based configuration via `Settings` (`QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION_NAME`, `QDRANT_BATCH_SIZE`).
+  - Automatic embedded disk storage fallback (`data/qdrant_local/`) when Docker Qdrant is unavailable, matching the PostgreSQL -> SQLite fallback pattern for seamless offline development.
+  - Supports `:memory:` client for hermetic offline testing and automated integration testing.
+  - Idempotent collection lifecycle (`ensure_collection`): dimension 384, distance `Cosine`. Never drops or overwrites collections on startup.
+- **Payload & Indexing**:
+  - Keyword payload indexes created once for `user_id` and `document_id`.
+  - Rich payload stored per child point: `child_id`, `parent_chunk_id`, `parent_text`, `document_id`, `user_id`, `subject`, `page_start`, `page_end`, `text`, `chunk_index`.
+- **Deterministic Point IDs & Idempotency**:
+  - Uses UUID5 child chunk ID as Qdrant point ID.
+  - Repeated upserts with identical document/chunk data overwrite points rather than creating duplicates.
+- **Batched Upsert Pipeline**:
+  - Batched point ingestion (`QDRANT_BATCH_SIZE = 64`) with vector validation.
+  - Seamlessly integrated into `run_ingestion_pipeline` and FastAPI background upload handler.
+  - Terminal failure during vector ingestion properly marks document status `FAILED`.
+- **Docker Compose Setup**:
+  - Added `qdrant` service (`qdrant/qdrant:latest`, ports `6333:6333`, `6334:6334`) and persistent volume `qdrant_data`.
 - **Testing & Verification**:
-  - 141 automated tests in `backend/tests/` passing (100% pass rate).
-  - End-to-end verified on real course PDFs (`lec-1.pdf`, `Lec-2.pdf`, `Lec-3.pdf`).
-  - Negative test suite covering blank PDFs, corrupted files, and non-existent files.
+  - 15 automated tests in `backend/tests/test_qdrant_service.py` (100% passing).
+  - Full backend test suite passing (156/156 tests passing).
+  - End-to-end verified with real lecture PDF (`lec-1.pdf`) and live manual API testing via Swagger UI (`/docs`).
 
 ---
 
@@ -1192,11 +1211,6 @@ unless implementation evidence requires it.
 
 The following features belong strictly to later days and are deliberately NOT implemented yet:
 
-- **Day 3 — Vector Database (Qdrant)**:
-  - Setup local Qdrant collection (vector dimension 384, cosine distance).
-  - Payload indexing (`user_id`, `document_id`, `subject`).
-  - Upsert pipeline from `data/processed/` into Qdrant points.
-  - Dense vector similarity search with filters.
 - **Day 4 — Reranking & Retrieval Optimization**:
   - Top-15 semantic retrieval from Qdrant.
   - Cross-encoder reranker (`ms-marco-MiniLM-L-6-v2` or FlashRank) to rerank top candidates to top 3–5 chunks.

@@ -20,6 +20,8 @@ test_temp.db
 data/*.db
 data/*.sqlite*
 data/*.db-journal
+data/qdrant_local/
+data/qdrant_local*
 
 # Private Notes & Reference
 Do not read/

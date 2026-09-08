@@ -75,7 +75,7 @@ def process_document_background(document_id: str, file_path: str, subject: str =
             result["embedding_dimension"],
         )
 
-    except (FileNotFoundError, ValueError) as exc:
+    except (FileNotFoundError, ValueError, RuntimeError) as exc:
         logger.error("Pipeline error for document %s: %s", document_id, exc)
         update_document_status(
             db,

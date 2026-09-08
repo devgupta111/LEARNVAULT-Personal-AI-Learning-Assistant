@@ -1,1 +1,8 @@
-# Directory placeholder for local processed output (JSON chunks & embeddings)
+# =======================================================================
+# data/processed/
+# =======================================================================
+# Directory for local processed output (JSON files containing extracted text,
+# parent chunks, child chunks, metadata, and 384-dimensional embeddings).
+# Generated output files (*.json) are excluded from Git via .gitignore
+# to protect processed student data and keep the repository lightweight.
+# =======================================================================

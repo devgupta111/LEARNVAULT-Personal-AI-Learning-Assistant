@@ -5,6 +5,7 @@ Central configuration loaded from the .env file at the project root.
 All settings are environment-variable driven — no secrets in source code.
 """
 
+from typing import Optional
 from pathlib import Path
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
@@ -21,6 +22,13 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = str(PROJECT_ROOT / "data" / "uploads")
     PROCESSED_DIR: str = str(PROJECT_ROOT / "data" / "processed")
     MAX_FILE_SIZE_MB: int = 20
+
+    # Day 3 — Qdrant Vector Database
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_API_KEY: Optional[str] = None
+    QDRANT_COLLECTION_NAME: str = "learning_assistant"
+    QDRANT_BATCH_SIZE: int = 64
+
 
     @field_validator("UPLOAD_DIR", mode="after")
     @classmethod

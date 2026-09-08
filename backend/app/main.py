@@ -28,8 +28,23 @@ async def lifespan(app: FastAPI):
     logger.info("Starting up — creating database tables if needed")
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables ready")
+
+    # Day 3: Ensure Qdrant collection and payload indexes exist
+    try:
+        from app.services.qdrant_service import ensure_collection, is_qdrant_available
+        if is_qdrant_available():
+            ensure_collection()
+            logger.info("Qdrant collection and payload indexes ready")
+        else:
+            logger.warning(
+                "Qdrant is not currently reachable; collection will be initialized when reachable"
+            )
+    except Exception as exc:
+        logger.warning("Could not initialize Qdrant on startup: %s", exc)
+
     yield
     logger.info("Shutting down")
+
 
 
 app = FastAPI(

@@ -1,1 +1,7 @@
-# Test PDFs for manual and automated testing are stored here.
+# =======================================================================
+# data/test_documents/
+# =======================================================================
+# Test PDF documents used for unit and integration testing.
+# Generated or temporary test documents are excluded from Git via .gitignore.
+# Only public, non-sensitive fixtures belong here.
+# =======================================================================

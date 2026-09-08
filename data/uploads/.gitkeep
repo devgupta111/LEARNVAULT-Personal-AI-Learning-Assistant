@@ -1,2 +1,8 @@
-# Uploaded PDFs are stored here.
-# Individual PDF files are excluded from git via .gitignore.
+# =======================================================================
+# data/uploads/
+# =======================================================================
+# Uploaded PDF documents are stored in this directory.
+# User documents and uploaded files contain private study material and
+# are excluded from Git via .gitignore to prevent committing user files.
+# Only clean sample lecture notes or test fixtures should ever be committed.
+# =======================================================================

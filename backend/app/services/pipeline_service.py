@@ -1,4 +1,4 @@
-﻿"""
+"""
 services/pipeline_service.py
 
 Day 2 ingestion pipeline orchestrator.
@@ -41,13 +41,14 @@ happens in Day 3/Phase 5.
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 
 from app.config import settings, PROJECT_ROOT
 from app.services.pdf_service import extract_text_from_pdf, is_document_fully_scanned
 from app.services.cleaning_service import clean_document_pages
 from app.services.chunking_service import generate_chunks
 from app.services.embedding_service import embed_chunks, get_embedding_dimension
+from app.services.qdrant_service import upsert_document_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -64,24 +65,37 @@ def run_ingestion_pipeline(
     file_path: str,
     subject: str = "General",
     user_id: str = "dev-user",
+    qdrant_client: Optional[Any] = None,
+    skip_qdrant: bool = False,
 ) -> Dict:
     """
-    Run the complete Day 2 ingestion pipeline for a single document.
+    Run the complete ingestion pipeline for a single document.
+
+    Pipeline sequence:
+      1. Extract text page-by-page (pdf_service)
+      2. Detect scanned pages & apply deep cleaning (cleaning_service)
+      3. Generate hierarchical parent and child chunks (chunking_service)
+      4. Generate 384-d embeddings for child chunks (embedding_service)
+      5. Upsert points into Qdrant vector database (qdrant_service)
+      6. Save processed output JSON to data/processed/{document_id}.json
 
     Args:
-        document_id: Unique identifier for the document.
-        file_path:   Absolute path to the PDF file.
-        subject:     Document subject label.
-        user_id:     User identifier (dev placeholder until auth is added).
+        document_id:   Unique identifier for the document.
+        file_path:     Absolute path to the PDF file.
+        subject:       Document subject label.
+        user_id:       User identifier (dev placeholder until auth is added).
+        qdrant_client: Optional QdrantClient instance (e.g. for testing with :memory:).
+        skip_qdrant:   Set True only to bypass vector storage.
 
     Returns:
         A summary dict with keys: status, total_parents, total_children,
-        embedding_dimension, readable_pages, scanned_pages, output_path.
+        embedding_dimension, readable_pages, scanned_pages, output_path,
+        qdrant_points_indexed, qdrant_collection.
 
     Raises:
         FileNotFoundError: If the PDF file does not exist.
         ValueError:        If the PDF is corrupted or fully scanned.
-        RuntimeError:      If embedding generation fails.
+        RuntimeError:      If embedding generation or Qdrant upsert fails.
     """
     logger.info("Pipeline START for document %s", document_id)
 
@@ -129,6 +143,20 @@ def run_ingestion_pipeline(
         embedding_dim,
     )
 
+    # Day 3 — Qdrant vector database upsert
+    qdrant_points_indexed = 0
+    qdrant_collection = None
+    if not skip_qdrant:
+        logger.info("Upserting %d child chunks into Qdrant", len(children_with_embeddings))
+        qdrant_result = upsert_document_chunks(
+            parents=parents,
+            children=children_with_embeddings,
+            client=qdrant_client,
+        )
+        qdrant_points_indexed = qdrant_result.get("points_indexed", 0)
+        qdrant_collection = qdrant_result.get("collection_name")
+        logger.info("Qdrant upsert complete: %d points indexed", qdrant_points_indexed)
+
     output = {
         "document_id": document_id,
         "user_id": user_id,
@@ -143,6 +171,8 @@ def run_ingestion_pipeline(
             "embedding_dimension": embedding_dim,
             "readable_pages": len(readable_pages),
             "scanned_pages": len(scanned_pages),
+            "qdrant_points_indexed": qdrant_points_indexed,
+            "qdrant_collection": qdrant_collection,
         },
     }
 
@@ -159,5 +189,8 @@ def run_ingestion_pipeline(
         "embedding_dimension": embedding_dim,
         "readable_pages": len(readable_pages),
         "scanned_pages": len(scanned_pages),
+        "qdrant_points_indexed": qdrant_points_indexed,
+        "qdrant_collection": qdrant_collection,
         "output_path": str(output_path),
     }
+

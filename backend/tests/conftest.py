@@ -84,3 +84,26 @@ def cleanup_sqlite():
             os.unlink(db_path)
         except OSError:
             pass
+
+
+@pytest.fixture(autouse=True)
+def qdrant_test_client(monkeypatch):
+    """
+    Ensure tests run hermetically with an in-memory Qdrant instance
+    if the external Qdrant container is not running, matching the
+    SQLite pattern used for PostgreSQL.
+    """
+    import app.services.qdrant_service as q_svc
+    from qdrant_client import QdrantClient
+
+    if not q_svc.is_qdrant_available():
+        memory_client = QdrantClient(":memory:")
+        original_get_client = q_svc.get_qdrant_client
+
+        def _mock_get_client(url=None, api_key=None):
+            if url is not None and url != ":memory:" and "invalid" in url:
+                return original_get_client(url=url, api_key=api_key)
+            return memory_client
+
+        monkeypatch.setattr(q_svc, "get_qdrant_client", _mock_get_client)
+
