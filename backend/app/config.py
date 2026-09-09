@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     QDRANT_COLLECTION_NAME: str = "learning_assistant"
     QDRANT_BATCH_SIZE: int = 64
 
+    # Day 4 — RAG LLM Generation (server-side only, never exposed to frontend)
+    # RAG_API_KEY: Groq API key used for grounded generation.
+    # RAG_MODEL:   Groq model for generation (e.g. openai/gpt-oss-120b).
+    RAG_API_KEY: Optional[str] = None
+    RAG_MODEL: str = "openai/gpt-oss-120b"
+
+    # Day 4 — Cross-Encoder Reranker (local FlashRank, no API key)
+    # Threshold below which retrieval is considered weak → refusal.
+    # Treat as a tunable value, not a universal constant.
+    RERANK_THRESHOLD: float = 0.35
+    RERANK_TOP_K: int = 4       # Max unique parent contexts sent to LLM
 
     @field_validator("UPLOAD_DIR", mode="after")
     @classmethod

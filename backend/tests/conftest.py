@@ -20,6 +20,8 @@ import app.api.documents as documents_module
 from app.db.base import Base
 from app.db.database import get_db
 from app.main import app
+# Ensure all models are registered with Base.metadata for test table creation
+from app.models import Document, Session, Message  # noqa: F401
 
 TEST_DB_PATH = "test_temp.db"
 SQLITE_URL = f"sqlite:///./{TEST_DB_PATH}"

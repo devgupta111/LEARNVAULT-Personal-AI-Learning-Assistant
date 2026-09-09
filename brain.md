@@ -1133,7 +1133,7 @@ unless implementation evidence requires it.
 
 # 15. Implementation Progress & Current Status
 
-## Current Status: DAY 3 COMPLETED & FULLY VERIFIED (156/156 Tests Passing)
+## Current Status: DAY 4 COMPLETED & FULLY VERIFIED (180/180 Tests Passing)
 
 ### IMPLEMENTED (Tested & Verified)
 
@@ -1205,28 +1205,63 @@ unless implementation evidence requires it.
   - Full backend test suite passing (156/156 tests passing).
   - End-to-end verified with real lecture PDF (`lec-1.pdf`) and live manual API testing via Swagger UI (`/docs`).
 
+#### Day 4 — Core RAG Pipeline, Retrieval, Reranking, Refusal & Chat Persistence
+- **Core RAG Pipeline (`app/api/chat.py`, `app/services/llm_service.py`, `app/services/reranker_service.py`)**:
+  - Clean non-streaming baseline without premature agents or SSE streaming.
+  - Full pipeline: auth dependency -> validate session & document ownership -> validate document `READY` -> load chronological history -> embed query with `all-MiniLM-L6-v2` -> Qdrant Top-15 search (`user_id` + `document_id` payload filters) -> FlashRank cross-encoder reranking -> weak-evidence threshold check (`RERANK_THRESHOLD = 0.35`) -> refusal on weak evidence -> parent-context reconstruction (`RERANK_TOP_K = 4`) on strong evidence -> grounded LLM generation -> citation extraction -> database message persistence -> JSON response.
+- **Qdrant Top-15 Vector Retrieval**:
+  - Employs `QdrantClient.query_points` (with legacy `.search` fallback) to retrieve top 15 candidate child vectors strictly filtered by both `user_id` and `document_id`.
+- **Cross-Encoder Reranking (`reranker_service.py`)**:
+  - Uses local FlashRank (`ms-marco-TinyBERT-L-2-v2`, runs locally without external API keys).
+  - Evaluates query against candidate child passages and ranks by relevance score.
+  - Parent deduplication: selects top unique parent contexts up to `RERANK_TOP_K = 4`, preserving rank order with highest child score.
+- **Weak-Evidence Refusal**:
+  - Configurable threshold (`RERANK_THRESHOLD = 0.35`).
+  - If top reranker score is below threshold, immediately returns standard unified refusal: `"I couldn't find sufficient information in your uploaded documents to answer that question."`
+  - Refusal is persisted to chat history and returned without hallucinating from outside knowledge.
+- **Parent-Context Reconstruction**:
+  - Strong evidence chunks swap child chunk text for their complete parent context (`parent_text`), preserving `page_start`, `page_end`, and `document_id` metadata for rich LLM context.
+- **Non-Streaming LLM Generation (`llm_service.py`)**:
+  - Model configured to `openai/gpt-oss-120b` via Groq API.
+  - Server-side environment key handling via `RAG_API_KEY` and `RAG_MODEL`.
+  - Strict grounding prompt: enforces answering exclusively from provided parent contexts, cites numbered sources, and prohibits external knowledge.
+- **Citation Metadata**:
+  - Extracts structured citations (`source_id`, `document_id`, `page_start`, `page_end`, `parent_chunk_id`, `subject`) aligned with `[Source N]` tags.
+- **PostgreSQL / SQLite Chat Persistence (`models/session.py`, `models/message.py`)**:
+  - `Session` model: `id`, `user_id`, `document_id`, `created_at`.
+  - `Message` model: `id`, `session_id`, `sender` ("user" | "assistant"), `content`, `citations` (JSON text), `created_at`.
+  - Deterministic millisecond timestamp offset ensures strict chronological ordering across turns.
+- **Authorization & Ownership Checks**:
+  - FastAPI auth dependency `get_current_user()` returns authenticated user (`dev-user`).
+  - Session ownership verified: 403 on mismatched user, 404 on missing session.
+  - Document ownership verified: 403 on mismatched user, 404 on missing document, 422 on not `READY`.
+  - Request document ID validated against session document ID: 400 on mismatch.
+- **API Endpoints**:
+  - `POST /sessions`: Create new conversation session for a document.
+  - `GET /sessions`: List user's sessions (newest first).
+  - `GET /sessions/{session_id}/messages`: List session messages (chronological order).
+  - `POST /chat`: Main RAG chat endpoint (non-streaming JSON).
+  - `GET /chat/status`: Status and feature manifest.
+- **Testing & Verification**:
+  - Automated tests: 26/26 tests passing in `backend/tests/test_chat.py`.
+  - Full test suite: 180/180 tests passing (2 skipped for live docker integration).
+  - Manual end-to-end verification (A-J) against live FastAPI server with real study materials and `openai/gpt-oss-120b`.
+
 ---
 
 ### PLANNED / FUTURE (Do NOT Implement Until Designated Days)
 
 The following features belong strictly to later days and are deliberately NOT implemented yet:
 
-- **Day 4 — Reranking & Retrieval Optimization**:
-  - Top-15 semantic retrieval from Qdrant.
-  - Cross-encoder reranker (`ms-marco-MiniLM-L-6-v2` or FlashRank) to rerank top candidates to top 3–5 chunks.
-  - Parent-context reconstruction (swapping retrieved child chunks for their rich parent text).
-- **Day 5 — Grounded LLM Generation & Citations**:
-  - LLM integration using preferred model (`openai/gpt-oss-120b`).
-  - Strict grounding prompt: answer only based on provided context; cite page numbers.
-  - Explicit refusal when context is insufficient.
-  - SSE streaming endpoint for real-time response delivery.
-- **Day 6 — Agentic Workflows**:
-  - **Query Router & Rewriter Agent**: Rewrite queries with history; route to direct chat, RAG, or quiz mode.
-  - **CRAG Agent**: Corrective retrieval evaluator; triggers one query reform/retry when retrieval is weak.
-  - **Hallucination & Citation Grader**: Validates generated answer against retrieved parent context; triggers one regeneration if unsupported.
-- **Day 7 — Adaptive Quiz System, Polish & Deployment**:
-  - Adaptive diagnostic quiz generation from study materials.
-  - Deterministic MCQ auto-grading.
+- **Day 5 — Agentic Query Routing & CRAG**:
+  - Query Router & Rewriter Agent: Rewrite conversational queries using history; route between direct chat, RAG, and quiz modes.
+  - CRAG (Corrective Retrieval-Augmented Generation) Agent: Evaluates retrieval strength and triggers exactly one query reformulation/retry on weak retrieval before refusal.
+- **Day 6 — Hallucination Graders & Production Authentication**:
+  - Hallucination & Citation Grader Agent: Verifies LLM answer against retrieved parent context; triggers exactly one regeneration if unsupported.
+  - Production JWT Authentication: Replace dev-user stub with real JWT auth and token verification.
+- **Day 7 — Adaptive Quiz System, Frontend Integration & Streaming**:
+  - Adaptive diagnostic quiz generation from study materials with deterministic MCQ auto-grading.
+  - Server-Sent Events (SSE) streaming endpoint (`StreamingResponse`).
   - Next.js frontend integration.
   - Full Docker compose deployment.
 
