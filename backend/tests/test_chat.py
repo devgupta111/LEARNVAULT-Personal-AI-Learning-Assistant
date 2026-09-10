@@ -535,8 +535,13 @@ class TestChat:
         doc_id, session_id = _setup_doc_and_session(db)
         db.close()
 
+        from app.schemas.chat_schemas import RouterOutput
+
         # First turn
         with patch(
+            "app.api.chat.route_and_rewrite_query",
+            return_value=RouterOutput(route="rag_query", rewritten_query="First question"),
+        ), patch(
             "app.api.chat.search_and_rerank",
             return_value=(_FAKE_PARENT_RESULTS, False),
         ), patch(
@@ -557,6 +562,9 @@ class TestChat:
             return "Second answer"
 
         with patch(
+            "app.api.chat.route_and_rewrite_query",
+            return_value=RouterOutput(route="rag_query", rewritten_query="Second question"),
+        ), patch(
             "app.api.chat.search_and_rerank",
             return_value=(_FAKE_PARENT_RESULTS, False),
         ), patch(
@@ -584,5 +592,5 @@ class TestChatStatus:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "active"
-        assert data["day"] == 4
+        assert data["day"] == 5
         assert "Core RAG pipeline" in data["features"]

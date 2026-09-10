@@ -6,7 +6,7 @@ Pydantic request and response models for the Day-4 chat API.
 Day 4 uses normal JSON request/response — no SSE, no streaming.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Literal
 from pydantic import BaseModel, field_validator
 
 
@@ -90,3 +90,44 @@ class MessageResponse(BaseModel):
     content: str
     citations: List[CitationItem] = []
     created_at: str
+
+
+# ─── Day 5 Agent Schemas ──────────────────────────────────────────────────────
+
+class RouterOutput(BaseModel):
+    """
+    Structured output for the Query Router & Rewriter Agent (Day 5).
+
+    Routes:
+      - direct_chat: Casual greetings and conversation (skips retrieval).
+      - rag_query:   Questions requiring study material context (rewritten for retrieval).
+      - quiz_mode:   Requests for quizzes (reserved for Day 6).
+    """
+    route: Literal["direct_chat", "rag_query", "quiz_mode"]
+    rewritten_query: str = ""
+
+    @field_validator("route")
+    @classmethod
+    def validate_route(cls, v: str) -> str:
+        if v not in ("direct_chat", "rag_query", "quiz_mode"):
+            raise ValueError(
+                f"Invalid route '{v}'. Allowed values: direct_chat, rag_query, quiz_mode."
+            )
+        return v
+
+
+class CRAGOutput(BaseModel):
+    """
+    Structured output for the CRAG Agent (Day 5).
+
+    Generates exactly ONE concise alternative retrieval query (target <= 60 tokens).
+    """
+    alternative_query: str
+
+    @field_validator("alternative_query")
+    @classmethod
+    def validate_alternative_query(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("alternative_query must not be empty.")
+        return v

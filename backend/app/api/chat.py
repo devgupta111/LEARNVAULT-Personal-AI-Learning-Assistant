@@ -1,40 +1,45 @@
 """
 api/chat.py
 
-Day 4 — Core RAG chat endpoints.
+Day 5 — RAG Chat Endpoints with Query Router & Rewriter and CRAG Agent.
 
 Endpoints:
     POST /sessions                          Create a new chat session
     GET  /sessions                          List sessions for current user
     GET  /sessions/{session_id}/messages    List messages in a session
-    POST /chat                              Main RAG chat (non-streaming JSON)
+    POST /chat                              Main chat endpoint (non-streaming JSON)
     GET  /chat/status                       Health/status check
 
-POST /chat pipeline (Day 4 — no router, no CRAG, no SSE):
+POST /chat pipeline (Day 5):
     1. Authenticate user (dev-user stub; real JWT in Day 6)
     2. Validate session exists + belongs to authenticated user
     3. Validate document exists + belongs to authenticated user + is READY
-    4. Load last 3-4 messages (descending → reverse → chronological)
-    5. Embed user message (same model as ingestion)
-    6. Qdrant Top-15 search (filter: user_id AND document_id)
-    7. Cross-encoder reranking → top 3-4 unique parent contexts
-    8. Check retrieval strength against RERANK_THRESHOLD
-    9. If weak → save refusal + return refusal JSON
-    10. If strong → grounded LLM generation (non-streaming)
-    11. Extract citation metadata
-    12. Save user message + assistant answer + citations to PostgreSQL
-    13. Return JSON response with answer and citations
+    4. Load last 3-4 messages (chronological order)
+    5. Query Router & Rewriter Agent (single structured LLM call):
+         - direct_chat: Casual conversation -> direct LLM (skips retrieval)
+         - quiz_mode:   Quiz request -> Day-6 reserved stub
+         - rag_query:   Study material question -> rewritten query
+    6. Initial Retrieval (Top-15 Qdrant -> Cross-encoder reranking)
+    7. Evidence check:
+         - Strong evidence -> grounded RAG generation -> citations -> persist & return
+         - Weak evidence   -> CRAG Agent:
+                               * Generates exactly 1 alternative query
+                               * Retrieves and reranks exactly once again
+                               * If strong -> grounded RAG generation -> persist & return
+                               * If weak (or CRAG fails) -> Day-4 refusal
+    8. Database persistence (PostgreSQL):
+         * Original user message is stored (rewritten query is internal only)
+         * Assistant answer + citation metadata stored
 
 Security:
     - user_id ALWAYS derived from get_current_user() dependency.
     - Session ownership verified before any DB read.
     - Document ownership verified independently.
-    - Qdrant filter always includes BOTH user_id AND document_id.
-    - API keys never returned to the frontend.
+    - Qdrant filter always includes BOTH user_id AND document_id (both initial and CRAG retry).
+    - API keys never returned to the frontend or logged.
 
-No streaming (SSE) on Day 4. Streaming is deferred to Day 7.
-No Query Router on Day 4. Router deferred to Day 5.
-No CRAG on Day 4. CRAG deferred to Day 5.
+No streaming (SSE) on Day 5. Streaming is deferred to Day 7.
+No Grader / Quiz generation on Day 5. Deferred to Day 6.
 """
 
 import datetime
@@ -60,7 +65,14 @@ from app.schemas.chat_schemas import (
     SessionResponse,
 )
 from app.services.reranker_service import search_and_rerank
-from app.services.llm_service import generate_rag_response, get_citations, REFUSAL_MESSAGE
+from app.services.llm_service import (
+    generate_rag_response,
+    generate_direct_chat_response,
+    get_citations,
+    REFUSAL_MESSAGE,
+)
+from app.services.query_router_service import route_and_rewrite_query
+from app.services.crag_service import generate_crag_query
 
 logger = logging.getLogger(__name__)
 
@@ -290,23 +302,24 @@ def chat(
     db: DBSession = Depends(get_db),
 ):
     """
-    POST /chat — Core RAG chat endpoint (non-streaming JSON response).
+    POST /chat — Day-5 RAG chat endpoint with Query Router/Rewriter and CRAG (non-streaming JSON).
 
-    Full Day-4 pipeline:
-      1. Validate session + ownership
-      2. Validate document + ownership + READY status
+    Day-5 Pipeline:
+      1. Validate session ownership + document matching
+      2. Validate document ownership + READY status
       3. Load last 3-4 chat messages (chronological order)
-      4. Embed user query
-      5. Qdrant Top-15 search (user_id + document_id filter)
-      6. Cross-encoder reranking → top 3-4 parent contexts
-      7. Check retrieval strength
-      8. Weak → refusal (persisted + returned)
-      9. Strong → grounded LLM generation → extract citations
-      10. Persist user message + assistant answer
-      11. Return ChatResponse (answer + citations)
-
-    No streaming. No router. No CRAG. No grader.
-    These are intentionally deferred to Days 5-7.
+      4. Query Router & Rewriter Agent (single structured LLM call):
+         - direct_chat: Casual conversation -> direct LLM (skips retrieval)
+         - quiz_mode:   Quiz request -> Day-6 reserved stub
+         - rag_query:   Study material question -> rewritten query for retrieval
+      5. Initial Retrieval (Top-15 Qdrant -> Cross-encoder rerank)
+      6. Evidence check:
+         - Strong -> Grounded LLM generation -> Citations -> Persist & Return
+         - Weak   -> CRAG Agent:
+                     - Generates 1 alternative query
+                     - Retrieves and reranks exactly once again
+                     - If strong -> Grounded LLM generation -> Citations -> Persist & Return
+                     - If weak (or CRAG failed) -> Standard Day-4 refusal
     """
     session_id = request.session_id
     document_id = request.document_id
@@ -366,10 +379,91 @@ def chat(
         user_message[:60],
     )
 
-    # ── Step 4-7: Embed → Qdrant Top-15 → Cross-encoder rerank ──────────────
+    # ── Step 4: Query Router & Rewriter Agent ────────────────────────────────
+    router_output = route_and_rewrite_query(query=user_message, history=history)
+    selected_route = router_output.route
+    logger.info(
+        "Router: selected route='%s' for session=%s",
+        selected_route,
+        session_id,
+    )
+
+    # ── Path A: Direct Conversational Chat (no retrieval) ────────────────────
+    if selected_route == "direct_chat":
+        logger.info("Direct chat selected for session=%s. Skipping retrieval.", session_id)
+        try:
+            answer = generate_direct_chat_response(query=user_message, history=history)
+        except RuntimeError as exc:
+            logger.error("Direct chat generation failed: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Chat service is temporarily unavailable. Please try again.",
+            )
+        except Exception as exc:
+            logger.error("Unexpected direct chat error: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="An error occurred during conversational response generation.",
+            )
+
+        # Persist user message + assistant answer
+        now = datetime.datetime.now(datetime.timezone.utc)
+        try:
+            _save_message(session_id, "user", user_message, [], db, created_at=now)
+            _save_message(
+                session_id,
+                "assistant",
+                answer,
+                [],
+                db,
+                created_at=now + datetime.timedelta(milliseconds=1),
+            )
+        except Exception as exc:
+            logger.error("Failed to persist direct chat messages: %s", exc)
+
+        return ChatResponse(
+            session_id=session_id,
+            answer=answer,
+            citations=[],
+        )
+
+    # ── Path B: Quiz Mode Stub (Reserved for Day 6) ──────────────────────────
+    if selected_route == "quiz_mode":
+        logger.info("Quiz mode selected for session=%s. Returning Day-6 routing stub.", session_id)
+        answer = (
+            "Quiz mode detected. Interactive quiz generation and diagnostic testing "
+            "are scheduled for Day 6. You can currently ask questions over your document "
+            "in standard chat mode."
+        )
+        now = datetime.datetime.now(datetime.timezone.utc)
+        try:
+            _save_message(session_id, "user", user_message, [], db, created_at=now)
+            _save_message(
+                session_id,
+                "assistant",
+                answer,
+                [],
+                db,
+                created_at=now + datetime.timedelta(milliseconds=1),
+            )
+        except Exception as exc:
+            logger.error("Failed to persist quiz stub messages: %s", exc)
+
+        return ChatResponse(
+            session_id=session_id,
+            answer=answer,
+            citations=[],
+        )
+
+    # ── Path C: RAG Query with Document Retrieval ────────────────────────────
+    # The rewritten query replaces ONLY the query used for retrieval.
+    # The original user message is preserved for database persistence and grounded context.
+    retrieval_query = router_output.rewritten_query or user_message
+
+    # Initial retrieval: Embed -> Qdrant Top-15 -> Cross-encoder rerank
     try:
         parent_results, is_weak = search_and_rerank(
-            query=user_message,
+            query=retrieval_query,
             document_id=document_id,
             user_id=current_user,
             threshold=settings.RERANK_THRESHOLD,
@@ -388,14 +482,42 @@ def chat(
             detail="An error occurred during document retrieval.",
         )
 
-    # ── Step 8: Weak retrieval → refusal (no CRAG on Day 4) ──────────────────
+    # ── Step 5: Evidence Check & CRAG Corrective Retrieval ───────────────────
     if is_weak:
         logger.info(
-            "Weak retrieval for session=%s, query='%s...' → returning refusal",
+            "Initial retrieval weak for session=%s (query='%s...'). Triggering CRAG Agent.",
             session_id,
-            user_message[:60],
+            retrieval_query[:50],
         )
-        # Persist both the user message and the refusal
+
+        crag_output = generate_crag_query(query=retrieval_query, history=history)
+
+        if crag_output and crag_output.alternative_query:
+            logger.info(
+                "CRAG: Performing exactly one retry with alternative query='%s'",
+                crag_output.alternative_query,
+            )
+            try:
+                parent_results, is_weak = search_and_rerank(
+                    query=crag_output.alternative_query,
+                    document_id=document_id,
+                    user_id=current_user,
+                    threshold=settings.RERANK_THRESHOLD,
+                    top_k=settings.RERANK_TOP_K,
+                )
+            except Exception as exc:
+                logger.warning("CRAG retry retrieval failed: %s. Defaulting to weak.", exc)
+                is_weak = True
+        else:
+            logger.info("CRAG: Alternative query generation failed or empty. Defaulting to refusal.")
+            is_weak = True
+
+    # If still weak after CRAG retry (or if CRAG failed) -> return Day-4 refusal
+    if is_weak:
+        logger.info(
+            "Evidence remains weak after CRAG evaluation for session=%s → returning refusal",
+            session_id,
+        )
         try:
             now = datetime.datetime.now(datetime.timezone.utc)
             _save_message(session_id, "user", user_message, [], db, created_at=now)
@@ -409,7 +531,6 @@ def chat(
             )
         except Exception as exc:
             logger.error("Failed to persist refusal messages: %s", exc)
-            # Don't fail the response if DB write fails — still return refusal
 
         return ChatResponse(
             session_id=session_id,
@@ -417,7 +538,7 @@ def chat(
             citations=[],
         )
 
-    # ── Step 9: Grounded LLM generation ──────────────────────────────────────
+    # ── Step 6: Grounded LLM Generation ──────────────────────────────────────
     logger.info(
         "Generating grounded answer from %d parent contexts for session=%s",
         len(parent_results),
@@ -442,11 +563,11 @@ def chat(
             detail="An error occurred during answer generation.",
         )
 
-    # ── Step 10: Extract citation metadata ────────────────────────────────────
+    # ── Step 7: Extract citation metadata ────────────────────────────────────
     raw_citations = get_citations(parent_results)
     citation_items = [CitationItem(**c) for c in raw_citations]
 
-    # ── Step 11: Persist user message + assistant answer ─────────────────────
+    # ── Step 8: Persist user message + assistant answer ───────────────────────
     try:
         now = datetime.datetime.now(datetime.timezone.utc)
         _save_message(session_id, "user", user_message, [], db, created_at=now)
@@ -460,7 +581,6 @@ def chat(
         )
     except Exception as exc:
         logger.error("Failed to persist chat messages: %s", exc)
-        # Return the answer even if DB persistence fails — don't lose the response
 
     logger.info(
         "Chat complete: session=%s, answer_len=%d, citations=%d",
@@ -469,7 +589,6 @@ def chat(
         len(citation_items),
     )
 
-    # ── Step 12: Return JSON response ─────────────────────────────────────────
     return ChatResponse(
         session_id=session_id,
         answer=answer,
@@ -484,7 +603,7 @@ def chat_status():
     """Status check for the chat module."""
     return {
         "status": "active",
-        "day": 4,
+        "day": 5,
         "features": [
             "Core RAG pipeline",
             "Grounded answer generation",
@@ -492,12 +611,13 @@ def chat_status():
             "Weak-retrieval refusal",
             "Chat/session/message persistence (PostgreSQL)",
             "Session + document ownership checks",
+            "Query Router & Rewriter Agent (direct_chat / rag_query / quiz_mode)",
+            "CRAG corrective retrieval with single alternative-query retry",
         ],
         "deferred": [
-            "Query Router & Rewriter Agent (Day 5)",
-            "CRAG corrective retrieval (Day 5)",
-            "Hallucination/Citation Grader (Day 6)",
+            "Hallucination & Citation Grader (Day 6)",
+            "Adaptive Quiz & Diagnostic Agent (Day 6)",
+            "Production JWT authentication (Day 6)",
             "SSE streaming (Day 7)",
-            "JWT authentication (Day 6)",
         ],
     }

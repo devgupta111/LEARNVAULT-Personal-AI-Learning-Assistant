@@ -1247,21 +1247,66 @@ unless implementation evidence requires it.
   - Full test suite: 180/180 tests passing (2 skipped for live docker integration).
   - Manual end-to-end verification (A-J) against live FastAPI server with real study materials and `openai/gpt-oss-120b`.
 
+#### Day 5 — Query Router/Rewriter Agent & CRAG Agent (DAY 5 = COMPLETED AND VERIFIED)
+- **Status**: COMPLETED AND VERIFIED (100% test pass rate, all manual verification checks A-I passing against live server).
+- **Agent 1: Query Router & Rewriter Agent (`app/services/query_router_service.py`)**:
+  - Implemented as a bounded service executing **ONE structured LLM call** (not two agents).
+  - Strict Pydantic schema `RouterOutput` validating `route: Literal["direct_chat", "rag_query", "quiz_mode"]` and `rewritten_query: str`.
+  - Fast-path heuristic: simple conversational greetings immediately route to `direct_chat` without LLM latency.
+  - Route behavior:
+    - `direct_chat`: Greetings, pleasantries, small talk. Skips retrieval completely and uses `generate_direct_chat_response` without inventiveness.
+    - `rag_query`: Study questions requiring document retrieval. Resolves pronouns/references against recent chronological history into a standalone search query.
+    - `quiz_mode`: Quiz generation requests. Cleanly routed to a Day-6 reserved stub response (no quiz questions or tables created).
+  - Safe fallback: On any LLM timeout, malformed JSON, or API exception, safely defaults to `route="rag_query"` with `rewritten_query=original_user_query`.
+  - Retrieval rule enforced: Rewritten query replaces ONLY the query used for retrieval; original user message is preserved in PostgreSQL and LLM context.
+- **Agent 2: CRAG Agent (`app/services/crag_service.py`)**:
+  - Implemented as a separate bounded service executing a structured LLM call.
+  - Strict Pydantic schema `CRAGOutput` validating `alternative_query: str`.
+  - Triggered **ONLY** when initial retrieval yields weak evidence (`score < RERANK_THRESHOLD`). Never called for direct_chat, quiz_mode, or strong retrieval.
+  - Generates exactly **ONE** concise alternative search query (target <= 60 tokens / under 300 characters) using synonyms, entity expansion, and clearer phrasing.
+  - Enforces exactly **ONE** retrieval retry:
+    - If retry evidence is strong -> proceeds to Day-4 grounded RAG generation.
+    - If retry evidence is still weak -> returns standard Day-4 refusal: `"I couldn't find sufficient information in your uploaded documents to answer that question."`
+  - Safe fallback: On CRAG model failure, timeout, or invalid output, immediately returns the standard Day-4 refusal. Never loops or retries more than once.
+  - Centralized retrieval reuse: CRAG retry reuses the identical `search_and_rerank` pipeline with authenticated `user_id` and `document_id` security filters strictly enforced.
+- **Configuration & Provider Isolation (`app/config.py`, `.env.example`)**:
+  - Dedicated configuration settings added: `ROUTER_API_KEY`, `ROUTER_MODEL` (default: `llama-3.1-8b-instant`), `CRAG_API_KEY`, `CRAG_MODEL` (default: `llama-3.1-8b-instant`).
+  - Seamless fallback to `RAG_API_KEY` when dedicated router/CRAG keys are not specified.
+  - Never hardcodes or logs API keys.
+- **Chat Endpoint Integration (`app/api/chat.py`)**:
+  - Updated `POST /chat` to integrate Router and CRAG seamlessly into the Day-4 pipeline.
+  - Strictly non-streaming JSON responses maintained (no SSE, no `StreamingResponse`).
+  - Updated `GET /chat/status` feature manifest (`query_router`, `crag_agent`, `day=5`).
+- **Testing & Verification**:
+  - Dedicated Day-5 tests: 19/19 passing in `backend/tests/test_day5_agents.py` covering requirements A through Q.
+  - Full backend test suite: 199/199 passing (2 skipped for live docker integration).
+  - Manual end-to-end verification (A-I) against live FastAPI application:
+    - Check A: Simple Greeting ("Hello") -> `direct_chat`, fastpath, no Qdrant retrieval, no CRAG, normal JSON (PASS).
+    - Check B: Normal RAG Question -> `rag_query`, rewritten query used internally, Qdrant retrieval, citations returned (PASS).
+    - Check C: Follow-up Question -> History context resolved, rewritten query generated, retrieval performed (PASS).
+    - Check D & F: Out-of-domain / Weak retrieval -> Initial retrieval weak -> CRAG triggered -> Exactly one retry performed -> Evidence still weak -> Standard Day-4 refusal returned (PASS).
+    - Check G: Quiz request -> `quiz_mode` routing stub returned cleanly without creating quiz questions/tables (PASS).
+    - Check H: Security -> Session ownership and document ownership strictly verified (404/400/403) (PASS).
+    - Check I: Non-streaming verification -> Standard `application/json` response, no SSE, no `data: {"token": ...}` (PASS).
+- **Deferred Boundaries Strictly Respected**:
+  - No Hallucination/Citation Grader (Day 6).
+  - No Quiz Agent generation or grading (Day 6).
+  - No SSE streaming (Day 7).
+  - No frontend / Next.js work (Day 7).
+  - No new external frameworks (LangGraph, CrewAI, AutoGen) introduced.
+
 ---
 
 ### PLANNED / FUTURE (Do NOT Implement Until Designated Days)
 
 The following features belong strictly to later days and are deliberately NOT implemented yet:
 
-- **Day 5 — Agentic Query Routing & CRAG**:
-  - Query Router & Rewriter Agent: Rewrite conversational queries using history; route between direct chat, RAG, and quiz modes.
-  - CRAG (Corrective Retrieval-Augmented Generation) Agent: Evaluates retrieval strength and triggers exactly one query reformulation/retry on weak retrieval before refusal.
-- **Day 6 — Hallucination Graders & Production Authentication**:
+- **Day 6 — Hallucination Graders, Adaptive Quiz Agent & Production Authentication**:
   - Hallucination & Citation Grader Agent: Verifies LLM answer against retrieved parent context; triggers exactly one regeneration if unsupported.
+  - Adaptive Quiz & Diagnostic Agent: Interactive quiz generation from study materials with deterministic MCQ auto-grading.
   - Production JWT Authentication: Replace dev-user stub with real JWT auth and token verification.
-- **Day 7 — Adaptive Quiz System, Frontend Integration & Streaming**:
-  - Adaptive diagnostic quiz generation from study materials with deterministic MCQ auto-grading.
+- **Day 7 — Frontend Integration & Streaming**:
   - Server-Sent Events (SSE) streaming endpoint (`StreamingResponse`).
-  - Next.js frontend integration.
+  - Next.js frontend integration with modern study workspace UI.
   - Full Docker compose deployment.
 

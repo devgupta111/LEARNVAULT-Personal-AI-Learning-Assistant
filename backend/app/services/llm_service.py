@@ -220,3 +220,56 @@ def get_citations(parent_results: List[Dict]) -> List[Dict]:
             }
         )
     return citations
+
+
+def generate_direct_chat_response(
+    query: str,
+    history: Optional[List[Dict]] = None,
+) -> str:
+    """
+    Direct conversational LLM response for greetings and non-retrieval chit-chat (Day 5).
+
+    Does NOT perform document retrieval, embedding, or citation tracking.
+    Uses the existing LLM provider and credentials (RAG_API_KEY / RAG_MODEL).
+    Non-streaming.
+
+    Args:
+        query:   The user's conversational message (e.g. "hi", "thank you").
+        history: Recent chat history (chronological, role/content dicts).
+
+    Returns:
+        Conversational response string.
+    """
+    client, model = _get_generation_client()
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a friendly, helpful AI learning assistant for students. "
+                "Respond politely, warmly, and concisely to the student's greeting or comment. "
+                "Remind them gently that they can ask questions about their uploaded study material."
+            ),
+        }
+    ]
+    for turn in (history or []):
+        role = turn.get("role", "user")
+        content = turn.get("content", "")
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": query})
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=300,
+            stream=False,
+        )
+        return (
+            response.choices[0].message.content
+            or "Hello! How can I help you with your studies today?"
+        )
+    except Exception as exc:
+        logger.error("Direct chat LLM generation failed: %s", exc)
+        raise RuntimeError(f"Direct chat generation error: {exc}") from exc

@@ -41,6 +41,15 @@ class Settings(BaseSettings):
     RERANK_THRESHOLD: float = 0.35
     RERANK_TOP_K: int = 4       # Max unique parent contexts sent to LLM
 
+    # Day 5 — Query Router & Rewriter Agent (dedicated credentials with RAG fallback)
+    ROUTER_API_KEY: Optional[str] = None
+    ROUTER_MODEL: str = "llama-3.1-8b-instant"
+
+    # Day 5 — CRAG Agent (dedicated credentials with RAG fallback)
+    CRAG_API_KEY: Optional[str] = None
+    CRAG_MODEL: str = "llama-3.1-8b-instant"
+
+
     @field_validator("UPLOAD_DIR", mode="after")
     @classmethod
     def resolve_upload_dir(cls, v: str) -> str:
