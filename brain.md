@@ -1301,12 +1301,60 @@ unless implementation evidence requires it.
 
 The following features belong strictly to later days and are deliberately NOT implemented yet:
 
-- **Day 6 — Hallucination Graders, Adaptive Quiz Agent & Production Authentication**:
-  - Hallucination & Citation Grader Agent: Verifies LLM answer against retrieved parent context; triggers exactly one regeneration if unsupported.
-  - Adaptive Quiz & Diagnostic Agent: Interactive quiz generation from study materials with deterministic MCQ auto-grading.
-  - Production JWT Authentication: Replace dev-user stub with real JWT auth and token verification.
 - **Day 7 — Frontend Integration & Streaming**:
   - Server-Sent Events (SSE) streaming endpoint (`StreamingResponse`).
   - Next.js frontend integration with modern study workspace UI.
   - Full Docker compose deployment.
+  - Production JWT authentication replacing the dev-user stub.
+
+---
+
+#### Day 6 — Hallucination & Citation Grader + Adaptive Quiz Agent (DAY 6 = IMPLEMENTED AND VERIFIED)
+
+- **Status**: IMPLEMENTED AND VERIFIED (100% test pass rate across 26 dedicated Day-6 tests, full suite 225/225 passing, and manual API verification passed).
+
+##### Agent 3: Hallucination & Citation Grader (`app/services/grader_service.py`)
+- Verified as a bounded service executing ONE structured LLM call (evaluates answer vs already-retrieved parent context).
+- Evaluates grounding, citation correctness, and unsupported claims against supplied evidence.
+- Does NOT perform retrieval, does NOT call CRAG, does NOT generate quizzes.
+- Strict Pydantic schema `GraderOutput` validating `grounded: bool`, `confidence: float`, `critique: str`.
+- Locked grader failure flow verified in `app/api/chat.py`:
+  - Grader PASS -> verified answer returned immediately with citations.
+  - Grader FAIL -> exactly one regeneration using the SAME retrieved context (no re-retrieval, no CRAG).
+  - Regenerated answer PASS -> verified regenerated answer returned with citations.
+  - Regenerated answer FAIL -> unified refusal returned (`REFUSAL_MESSAGE`), citations=[].
+  - Maximum regeneration attempts = 1. No second regeneration, no infinite loop.
+  - Grader failure NEVER triggers CRAG.
+
+##### Agent 4: Adaptive Quiz & Diagnostic Agent (`app/services/quiz_service.py`)
+- Verified as a separate pipeline from normal chat RAG.
+- Weak-topic detection verified: simple locked rule `accuracy < 60%`.
+- Topic retrieval verified: approximately 3 parent chunks retrieved from Qdrant with `user_id` AND `document_id` security filters strictly enforced.
+- MCQ generation verified: grounded in study material, 4 options each, validated by `QuizQuestion` Pydantic schema.
+- Malformed LLM output handling verified: invalid questions filtered or rejected safely.
+- Deterministic auto-grading verified: `submitted_answer == correct_answer` (exact string comparison). Score and percentage calculated strictly by backend application code — LLM never determines correctness.
+
+##### Quiz API Endpoints & Persistence (`app/api/quiz.py`)
+- `POST /quiz/generate`: Verified (document ownership check, weak-topic detection, Qdrant retrieval, MCQ generation, DB persistence, returns 201).
+- `GET  /quiz/{quiz_id}`: Verified (ownership check, deserialization, returns 200; 403 on other user's quiz, 404 on invalid ID).
+- `POST /quiz/{quiz_id}/submit`: Verified (ownership check, deterministic grading, `quiz_attempts` persistence, returns 200; 422 on empty answers).
+- `GET  /quiz/history`: Verified (user-isolated quiz history with latest attempt statistics).
+- `GET  /quiz/status`: Verified (Day 6 feature manifest; path ordering fixed to prevent shadowing).
+
+##### Authentication, Ownership & Security
+- Authenticated identity strictly derived from `get_current_user()` dependency (never trusted from request body).
+- Cross-user access strictly rejected with 403 Forbidden for generation, retrieval, submission, and history.
+- Every Qdrant retrieval strictly enforces `user_id == authenticated_user` AND `document_id == selected_document`.
+
+##### Verification & Test Results
+- Dedicated Day-6 tests: 26/26 passing in `backend/tests/test_day6.py` covering all required verification points 1–26.
+- Full regression suite: 225/225 passing (2 skipped for live Qdrant container) across all test files.
+- Manual API verification: Passed for all endpoints (`POST /quiz/generate`, `GET /quiz/{quiz_id}`, `POST /quiz/{quiz_id}/submit`, `GET /quiz/history`, `GET /quiz/status`).
+
+##### Deferred Boundaries Strictly Respected
+- No SSE/streaming (Day 7).
+- No Next.js/frontend work (Day 7).
+- No production JWT authentication (Day 7).
+- No new external frameworks (LangGraph, CrewAI, AutoGen).
+- Exactly four agentic components total (no fifth agent added).
 

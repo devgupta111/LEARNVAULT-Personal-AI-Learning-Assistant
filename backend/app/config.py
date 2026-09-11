@@ -3,6 +3,12 @@ config.py
 
 Central configuration loaded from the .env file at the project root.
 All settings are environment-variable driven — no secrets in source code.
+
+Day 6 additions:
+  GRADER_API_KEY  — Dedicated API key for Hallucination & Citation Grader.
+  GRADER_MODEL    — Model for grader (dedicated credentials with RAG fallback).
+  QUIZ_API_KEY    — Dedicated API key for Adaptive Quiz & Diagnostic Agent.
+  QUIZ_MODEL      — Model for quiz generation.
 """
 
 from typing import Optional
@@ -48,6 +54,14 @@ class Settings(BaseSettings):
     # Day 5 — CRAG Agent (dedicated credentials with RAG fallback)
     CRAG_API_KEY: Optional[str] = None
     CRAG_MODEL: str = "llama-3.1-8b-instant"
+
+    # Day 6 — Hallucination & Citation Grader (dedicated credentials with RAG fallback)
+    GRADER_API_KEY: Optional[str] = None
+    GRADER_MODEL: str = "llama-3.1-8b-instant"
+
+    # Day 6 — Adaptive Quiz & Diagnostic Agent (dedicated credentials with RAG fallback)
+    QUIZ_API_KEY: Optional[str] = None
+    QUIZ_MODEL: str = "llama-3.1-8b-instant"
 
 
     @field_validator("UPLOAD_DIR", mode="after")

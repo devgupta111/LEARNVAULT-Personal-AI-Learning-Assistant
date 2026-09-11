@@ -17,7 +17,7 @@ from app.config import settings
 from app.models.document import Document
 from app.models.session import Session as ChatSession
 from app.models.message import Message
-from app.schemas.chat_schemas import RouterOutput, CRAGOutput
+from app.schemas.chat_schemas import RouterOutput, CRAGOutput, GraderOutput
 from app.services.query_router_service import (
     route_and_rewrite_query,
     SIMPLE_GREETINGS,
@@ -35,6 +35,11 @@ from tests.conftest import TestSessionLocal
 def chat_setup(client):
     """Create a ready document and an active session for dev-user."""
     db = TestSessionLocal()
+    # Ensure idempotency
+    db.query(ChatSession).filter(ChatSession.id == "sess-day5-test").delete()
+    db.query(Document).filter(Document.id == "doc-day5-test").delete()
+    db.commit()
+
     doc = Document(
         id="doc-day5-test",
         user_id="dev-user",
@@ -55,7 +60,13 @@ def chat_setup(client):
     db.commit()
     db.close()
 
-    return {"doc_id": "doc-day5-test", "session_id": "sess-day5-test"}
+    yield {"doc_id": "doc-day5-test", "session_id": "sess-day5-test"}
+
+    db = TestSessionLocal()
+    db.query(ChatSession).filter(ChatSession.id == "sess-day5-test").delete()
+    db.query(Document).filter(Document.id == "doc-day5-test").delete()
+    db.commit()
+    db.close()
 
 
 # ─── A-F: Query Router & Rewriter Unit Tests ──────────────────────────────────
@@ -329,8 +340,10 @@ class TestChatPipelineDay5:
         with patch("app.api.chat.route_and_rewrite_query") as mock_router, \
              patch("app.api.chat.search_and_rerank") as mock_search, \
              patch("app.api.chat.generate_crag_query") as mock_crag, \
-             patch("app.api.chat.generate_rag_response") as mock_rag:
+             patch("app.api.chat.generate_rag_response") as mock_rag, \
+             patch("app.api.chat.grade_answer") as mock_grader:
 
+            mock_grader.return_value = GraderOutput(grounded=True, confidence=0.95, critique="")
             mock_router.return_value = RouterOutput(route="rag_query", rewritten_query="paging")
             # 1st retrieval weak, 2nd retrieval strong
             mock_search.side_effect = [

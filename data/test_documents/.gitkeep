@@ -1,7 +1,12 @@
 # =======================================================================
-# data/test_documents/
+# data/test_documents/ — Test Fixtures Directory
 # =======================================================================
-# Test PDF documents used for unit and integration testing.
-# Generated or temporary test documents are excluded from Git via .gitignore.
-# Only public, non-sensitive fixtures belong here.
+# PURPOSE:
+# This directory holds non-sensitive, public PDF test fixtures used by
+# automated test suites (pytest).
+#
+# SENSITIVE DATA & PRIVACY:
+# Never store personal, sensitive, or confidential PDFs in this folder.
+# Only small, synthetic, or public domain sample documents should ever
+# be placed here for test validation.
 # =======================================================================

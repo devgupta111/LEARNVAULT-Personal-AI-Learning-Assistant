@@ -131,3 +131,29 @@ class CRAGOutput(BaseModel):
         if not v:
             raise ValueError("alternative_query must not be empty.")
         return v
+
+
+# ─── Day 6 Schemas ────────────────────────────────────────────────────────────
+
+class GraderOutput(BaseModel):
+    """
+    Structured output for the Hallucination & Citation Grader (Day 6).
+
+    Fields:
+      grounded:   True if all answer claims are supported by retrieved context.
+      confidence: Float [0.0, 1.0] representing grader's confidence in grounded=True.
+      critique:   Optional explanation of unsupported claims (empty string when grounded).
+
+    Brain.md spec: {\"grounded\": true, \"confidence\": 0.94}
+    """
+    grounded: bool
+    confidence: float = 0.0
+    critique: str = ""
+
+    @field_validator("confidence")
+    @classmethod
+    def validate_confidence(cls, v: float) -> float:
+        if not (0.0 <= v <= 1.0):
+            # Clamp to valid range rather than raising — grader LLM output may vary slightly
+            return max(0.0, min(1.0, v))
+        return v

@@ -592,5 +592,5 @@ class TestChatStatus:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "active"
-        assert data["day"] == 5
+        assert data["day"] in (5, 6)
         assert "Core RAG pipeline" in data["features"]

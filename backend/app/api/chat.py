@@ -1,7 +1,8 @@
 """
 api/chat.py
 
-Day 5 — RAG Chat Endpoints with Query Router & Rewriter and CRAG Agent.
+Day 6 — RAG Chat Endpoints with Query Router/Rewriter, CRAG Agent, and
+Hallucination & Citation Grader.
 
 Endpoints:
     POST /sessions                          Create a new chat session
@@ -10,22 +11,26 @@ Endpoints:
     POST /chat                              Main chat endpoint (non-streaming JSON)
     GET  /chat/status                       Health/status check
 
-POST /chat pipeline (Day 5):
-    1. Authenticate user (dev-user stub; real JWT in Day 6)
+POST /chat pipeline (Day 6):
+    1. Authenticate user (dev-user stub; real JWT in Day 7)
     2. Validate session exists + belongs to authenticated user
     3. Validate document exists + belongs to authenticated user + is READY
     4. Load last 3-4 messages (chronological order)
     5. Query Router & Rewriter Agent (single structured LLM call):
-         - direct_chat: Casual conversation -> direct LLM (skips retrieval)
-         - quiz_mode:   Quiz request -> Day-6 reserved stub
+         - direct_chat: Casual conversation -> direct LLM (skips retrieval, skips grader)
+         - quiz_mode:   Quiz request -> refer user to /quiz/generate endpoint
          - rag_query:   Study material question -> rewritten query
     6. Initial Retrieval (Top-15 Qdrant -> Cross-encoder reranking)
     7. Evidence check:
-         - Strong evidence -> grounded RAG generation -> citations -> persist & return
+         - Strong evidence -> grounded RAG generation -> GRADE (Agent 3)
+             PASS -> citations -> persist & return
+             FAIL -> regenerate ONCE with SAME context -> GRADE again
+                       PASS -> citations -> persist & return
+                       FAIL -> unified refusal
          - Weak evidence   -> CRAG Agent:
                                * Generates exactly 1 alternative query
                                * Retrieves and reranks exactly once again
-                               * If strong -> grounded RAG generation -> persist & return
+                               * If strong -> grounded RAG generation -> GRADE (same path)
                                * If weak (or CRAG fails) -> Day-4 refusal
     8. Database persistence (PostgreSQL):
          * Original user message is stored (rewritten query is internal only)
@@ -35,11 +40,12 @@ Security:
     - user_id ALWAYS derived from get_current_user() dependency.
     - Session ownership verified before any DB read.
     - Document ownership verified independently.
-    - Qdrant filter always includes BOTH user_id AND document_id (both initial and CRAG retry).
+    - Qdrant filter always includes BOTH user_id AND document_id.
     - API keys never returned to the frontend or logged.
 
-No streaming (SSE) on Day 5. Streaming is deferred to Day 7.
-No Grader / Quiz generation on Day 5. Deferred to Day 6.
+No streaming (SSE) on Day 6. Streaming is deferred to Day 7.
+No Grader / Quiz generation on Day 5. Grader + Quiz are now implemented in Day 6.
+Grader does NOT trigger CRAG. Grader failure -> exactly one regeneration.
 """
 
 import datetime
@@ -73,6 +79,7 @@ from app.services.llm_service import (
 )
 from app.services.query_router_service import route_and_rewrite_query
 from app.services.crag_service import generate_crag_query
+from app.services.grader_service import grade_answer  # Day 6
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +91,8 @@ def get_current_user() -> str:
     """
     Returns the authenticated user_id.
 
-    Day 4: Returns a hardcoded dev-user matching the document model default.
-    Day 6 will replace this with a real JWT dependency that decodes the token
+    Day 4/5/6: Returns a hardcoded dev-user matching the document model default.
+    Day 7 will replace this with a real JWT dependency that decodes the token
     and returns the actual user_id.
 
     NEVER trust a browser-supplied user_id. Always use this dependency.
@@ -154,7 +161,7 @@ def _save_message(
     db.commit()
 
 
-# ─── Session endpoints ────────────────────────────────────────────────────────
+# ─── Session endpoints ────────────────────────────────────────────────        
 
 @router.post("/sessions", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
 def create_session(
@@ -302,23 +309,23 @@ def chat(
     db: DBSession = Depends(get_db),
 ):
     """
-    POST /chat — Day-5 RAG chat endpoint with Query Router/Rewriter and CRAG (non-streaming JSON).
+    POST /chat — Day-6 RAG chat endpoint with Query Router/Rewriter, CRAG, and Grader (non-streaming JSON).
 
-    Day-5 Pipeline:
+    Day-6 Pipeline:
       1. Validate session ownership + document matching
       2. Validate document ownership + READY status
       3. Load last 3-4 chat messages (chronological order)
       4. Query Router & Rewriter Agent (single structured LLM call):
          - direct_chat: Casual conversation -> direct LLM (skips retrieval)
-         - quiz_mode:   Quiz request -> Day-6 reserved stub
+         - quiz_mode:   Quiz request -> refer user to /quiz/generate endpoint
          - rag_query:   Study material question -> rewritten query for retrieval
       5. Initial Retrieval (Top-15 Qdrant -> Cross-encoder rerank)
       6. Evidence check:
-         - Strong -> Grounded LLM generation -> Citations -> Persist & Return
+         - Strong -> Grounded LLM generation -> Grader (Agent 3) -> Citations -> Persist & Return
          - Weak   -> CRAG Agent:
                      - Generates 1 alternative query
                      - Retrieves and reranks exactly once again
-                     - If strong -> Grounded LLM generation -> Citations -> Persist & Return
+                     - If strong -> Grounded LLM generation -> Grader -> Citations -> Persist & Return
                      - If weak (or CRAG failed) -> Standard Day-4 refusal
     """
     session_id = request.session_id
@@ -427,13 +434,14 @@ def chat(
             citations=[],
         )
 
-    # ── Path B: Quiz Mode Stub (Reserved for Day 6) ──────────────────────────
+    # ── Path B: Quiz Mode ──────────────────────────────────────────────────
+    # Day 6: Quiz generation is now implemented via /quiz/generate endpoint.
+    # Redirect the user to use the dedicated quiz API.
     if selected_route == "quiz_mode":
-        logger.info("Quiz mode selected for session=%s. Returning Day-6 routing stub.", session_id)
+        logger.info("Quiz mode selected for session=%s. Routing to quiz API.", session_id)
         answer = (
-            "Quiz mode detected. Interactive quiz generation and diagnostic testing "
-            "are scheduled for Day 6. You can currently ask questions over your document "
-            "in standard chat mode."
+            "Quiz mode detected. Use the POST /quiz/generate endpoint to generate an "
+            "adaptive quiz from your document. You can also ask study questions here."
         )
         now = datetime.datetime.now(datetime.timezone.utc)
         try:
@@ -447,7 +455,7 @@ def chat(
                 created_at=now + datetime.timedelta(milliseconds=1),
             )
         except Exception as exc:
-            logger.error("Failed to persist quiz stub messages: %s", exc)
+            logger.error("Failed to persist quiz mode messages: %s", exc)
 
         return ChatResponse(
             session_id=session_id,
@@ -563,11 +571,102 @@ def chat(
             detail="An error occurred during answer generation.",
         )
 
-    # ── Step 7: Extract citation metadata ────────────────────────────────────
+    # ── Step 7: Hallucination & Citation Grader (Agent 3) ───────────────────────
+    # Extract citations BEFORE grading so the grader can verify them.
     raw_citations = get_citations(parent_results)
+
+    logger.info("Grader: evaluating initial answer for session=%s", session_id)
+    grader_result = grade_answer(
+        question=user_message,
+        answer=answer,
+        parent_results=parent_results,
+        citations=raw_citations,
+    )
+
+    if not grader_result.grounded:
+        # ─ GRADER FAIL: Regenerate exactly ONCE with the SAME retrieved context ─
+        logger.info(
+            "Grader FAIL (confidence=%.2f): Regenerating once with SAME context for session=%s. "
+            "Critique: '%s'",
+            grader_result.confidence,
+            session_id,
+            grader_result.critique[:120] if grader_result.critique else "",
+        )
+
+        # Regenerate using the SAME parent_results. No new retrieval. No CRAG.
+        try:
+            answer = generate_rag_response(
+                query=user_message,
+                parent_results=parent_results,  # SAME context — not re-retrieved
+                history=history,
+            )
+        except Exception as exc:
+            logger.error(
+                "Regeneration attempt failed for session=%s: %s. Returning refusal.", session_id, exc
+            )
+            answer = None
+
+        if answer:
+            # Grade the regenerated answer
+            raw_citations = get_citations(parent_results)
+            regen_grader_result = grade_answer(
+                question=user_message,
+                answer=answer,
+                parent_results=parent_results,
+                citations=raw_citations,
+            )
+
+            if regen_grader_result.grounded:
+                # Regenerated answer passed grading
+                logger.info(
+                    "Grader PASS after regeneration (confidence=%.2f) for session=%s",
+                    regen_grader_result.confidence,
+                    session_id,
+                )
+                # Fall through to persist the regenerated answer below
+            else:
+                # Regenerated answer ALSO failed grading -> refusal
+                logger.info(
+                    "Grader FAIL after regeneration (confidence=%.2f) for session=%s. "
+                    "Returning unified refusal.",
+                    regen_grader_result.confidence,
+                    session_id,
+                )
+                answer = None  # Signal refusal path below
+        # else: regeneration failed entirely -> answer is already None -> refusal
+
+        if answer is None:
+            # Final refusal: persist and return Day-4 unified refusal
+            try:
+                now = datetime.datetime.now(datetime.timezone.utc)
+                _save_message(session_id, "user", user_message, [], db, created_at=now)
+                _save_message(
+                    session_id,
+                    "assistant",
+                    REFUSAL_MESSAGE,
+                    [],
+                    db,
+                    created_at=now + datetime.timedelta(milliseconds=1),
+                )
+            except Exception as exc:
+                logger.error("Failed to persist grader-refusal messages: %s", exc)
+            return ChatResponse(
+                session_id=session_id,
+                answer=REFUSAL_MESSAGE,
+                citations=[],
+            )
+    else:
+        logger.info(
+            "Grader PASS (confidence=%.2f) for session=%s",
+            grader_result.confidence,
+            session_id,
+        )
+
+    # ── Step 8: Extract citations for the accepted answer ───────────────────────────
+    # raw_citations was already computed above (and recomputed for regeneration)
     citation_items = [CitationItem(**c) for c in raw_citations]
 
-    # ── Step 8: Persist user message + assistant answer ───────────────────────
+    # ── Step 9: Persist user message + accepted answer ────────────────────────────────
     try:
         now = datetime.datetime.now(datetime.timezone.utc)
         _save_message(session_id, "user", user_message, [], db, created_at=now)
@@ -603,7 +702,7 @@ def chat_status():
     """Status check for the chat module."""
     return {
         "status": "active",
-        "day": 5,
+        "day": 6,
         "features": [
             "Core RAG pipeline",
             "Grounded answer generation",
@@ -613,11 +712,12 @@ def chat_status():
             "Session + document ownership checks",
             "Query Router & Rewriter Agent (direct_chat / rag_query / quiz_mode)",
             "CRAG corrective retrieval with single alternative-query retry",
+            "Hallucination & Citation Grader (Agent 3) — grounding verification",
+            "Exactly one answer regeneration on grader failure (same context)",
+            "Unified refusal on second grader failure",
         ],
         "deferred": [
-            "Hallucination & Citation Grader (Day 6)",
-            "Adaptive Quiz & Diagnostic Agent (Day 6)",
-            "Production JWT authentication (Day 6)",
             "SSE streaming (Day 7)",
+            "Frontend integration (Day 7)",
         ],
     }

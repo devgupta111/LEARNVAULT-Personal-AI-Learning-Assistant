@@ -1,8 +1,17 @@
 # =======================================================================
-# data/processed/
+# data/processed/ — Processed Document Chunks & Embeddings
 # =======================================================================
-# Directory for local processed output (JSON files containing extracted text,
-# parent chunks, child chunks, metadata, and 384-dimensional embeddings).
-# Generated output files (*.json) are excluded from Git via .gitignore
-# to protect processed student data and keep the repository lightweight.
+# PURPOSE:
+# This directory stores local JSON artifacts generated during the Day-2/Day-3
+# pipeline (extracted text, parent/child chunks, and 384-dimensional vector
+# embeddings).
+#
+# SENSITIVE DATA & PRIVACY:
+# Generated JSON files contain full text extracts of uploaded documents.
+# All *.json files here are excluded from Git tracking via .gitignore
+# to protect processed student data and maintain a clean repository.
+#
+# INSTRUCTIONS FOR NEW USERS:
+# - No manual file creation is needed here.
+# - The backend automatically creates cached JSON files when processing PDFs.
 # =======================================================================

@@ -1,8 +1,20 @@
 # =======================================================================
-# data/uploads/
+# data/uploads/ — Uploaded PDF Documents Directory
 # =======================================================================
-# Uploaded PDF documents are stored in this directory.
-# User documents and uploaded files contain private study material and
-# are excluded from Git via .gitignore to prevent committing user files.
-# Only clean sample lecture notes or test fixtures should ever be committed.
+# PURPOSE:
+# This directory stores user-uploaded study materials and PDFs processed
+# by the backend pipeline.
+#
+# SENSITIVE DATA & PRIVACY:
+# Student lecture notes, textbooks, and personal PDF files placed here
+# are strictly private. All files in this directory are excluded from
+# Git tracking via .gitignore to prevent accidentally leaking personal
+# or copyrighted documents.
+#
+# INSTRUCTIONS FOR NEW USERS:
+# 1. Place your own PDF study files here manually or upload via the API:
+#      POST /documents/upload
+# 2. Never commit personal or proprietary PDF documents to GitHub.
+# 3. Only sample public notes (like 'lec-1.pdf', 'Lec-2.pdf') are tracked
+#    for demonstration and test purposes.
 # =======================================================================

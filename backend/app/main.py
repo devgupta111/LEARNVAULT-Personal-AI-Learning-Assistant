@@ -16,8 +16,9 @@ from app.db.base import Base
 from app.db.database import engine
 from app.api.documents import router as documents_router
 from app.api.chat import router as chat_router
+from app.api.quiz import router as quiz_router  # Day 6
 # Import all models so Base.metadata.create_all() creates every table
-from app.models import Document, Session, Message  # noqa: F401
+from app.models import Document, Session, Message, Quiz, QuizAttempt  # noqa: F401
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,12 +54,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Personal AI Learning Assistant",
     description="Backend API for the RAG-based study assistant.",
-    version="1.0.0-day4",
+    version="1.0.0-day6",
     lifespan=lifespan,
 )
 
 app.include_router(documents_router)
 app.include_router(chat_router)  # includes /chat, /sessions, /sessions/{id}/messages
+app.include_router(quiz_router)  # Day 6: /quiz/generate, /quiz/{id}, /quiz/{id}/submit, /quiz/history
 
 
 @app.get("/health", tags=["Health"])
@@ -72,6 +74,6 @@ def root():
     """Root endpoint."""
     return {
         "message": "Personal AI Learning Assistant API",
-        "version": "1.0.0-day4",
+        "version": "1.0.0-day6",
         "docs": "/docs",
     }
