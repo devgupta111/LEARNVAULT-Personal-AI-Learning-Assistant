@@ -191,6 +191,39 @@ class TestDay7Auth:
         resp = client.get("/auth/me", headers={"Authorization": "InvalidScheme token"})
         assert resp.status_code == 401
 
+    def test_update_profile_success(self, client):
+        token = create_access_token("test-profile-user")
+        headers = {"Authorization": f"Bearer {token}"}
+        resp = client.put("/auth/profile", json={"username": "Rahul Sharma"}, headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["username"] == "Rahul Sharma"
+        assert data["user_id"] == "test-profile-user"
+
+        # Verify that GET /auth/me reflects the updated name
+        me_resp = client.get("/auth/me", headers=headers)
+        assert me_resp.status_code == 200
+        assert me_resp.json()["username"] == "Rahul Sharma"
+
+    def test_update_profile_blank_name(self, client):
+        token = create_access_token("test-profile-user")
+        headers = {"Authorization": f"Bearer {token}"}
+        resp = client.put("/auth/profile", json={"username": "   "}, headers=headers)
+        assert resp.status_code == 422
+
+    def test_email_immutable_during_profile_update(self, client):
+        token = create_access_token("test-profile-user")
+        headers = {"Authorization": f"Bearer {token}"}
+        # Attempt to pass an arbitrary email field; it should not overwrite user email
+        resp = client.put("/auth/profile", json={"username": "Verified Name", "email": "hacker@evil.com"}, headers=headers)
+        assert resp.status_code == 200
+        assert resp.json()["username"] == "Verified Name"
+        assert resp.json()["email"] != "hacker@evil.com"
+
+    def test_update_profile_unauthenticated(self, client):
+        resp = client.put("/auth/profile", json={"username": "Hacker"})
+        assert resp.status_code == 401
+
 
 # ─── 2. User Isolation & Security Tests ───────────────────────────────────────
 

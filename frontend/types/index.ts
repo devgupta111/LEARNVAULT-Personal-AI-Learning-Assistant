@@ -6,15 +6,21 @@
 
 export interface User {
   user_id: string;
-  username: string;
-  role: string;
+  username?: string | null;
+  email?: string | null;
+  picture?: string | null;
+  auth_provider?: string | null;
+  role?: string;
 }
 
 export interface AuthResponse {
   access_token: string;
   token_type: string;
   user_id: string;
-  username: string;
+  username?: string | null;
+  email?: string | null;
+  picture?: string | null;
+  auth_provider?: string | null;
 }
 
 export interface DocumentSummary {

@@ -1,0 +1,158 @@
+# =======================================================================
+# .gitkeep — Environment & Sensitive Configuration Guide
+# =======================================================================
+#
+# PURPOSE FOR NEW USERS & DEVELOPERS:
+#   This file documents all sensitive credentials and environment variables
+#   required to run the Personal AI Learning Assistant.
+#
+# SECURITY NOTICE:
+#   Actual production secrets (.env, API keys, private passwords, and local
+#   databases) are STRICTLY excluded from Git via .gitignore to prevent
+#   accidental credential leakage.
+#
+# QUICK START:
+#   1. Create your local .env file by copying this template or .env.example:
+#        PowerShell:  Copy-Item .env.example .env
+#        Bash/macOS:  cp .env.example .env
+#   2. Fill in your credentials below (get free Groq API keys at https://console.groq.com).
+#   3. Start the application:
+#        Backend:   .\start_backend.ps1
+#        Frontend:  .\start_frontend.ps1
+#
+# =======================================================================
+# 1. DATABASE CONFIGURATION
+# =======================================================================
+#
+# with proper message:
+# PostgreSQL connection string for document tracking, chat history, and quizzes.
+# If PostgreSQL is not installed or Docker is not running, the application
+# automatically falls back to a local SQLite database at: data/ai_learning_local.db
+#
+# with proper example:
+DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/ai_learning_db
+
+# =======================================================================
+# 2. LOCAL FILE STORAGE & LIMITS
+# =======================================================================
+#
+# with proper message:
+# Directory where user lecture notes and PDFs are temporarily stored.
+#
+# with proper example:
+UPLOAD_DIR=data/uploads
+PROCESSED_DIR=data/processed
+
+# with proper message:
+# Maximum allowed PDF upload size in megabytes (enforced by FastAPI backend).
+#
+# with proper example:
+MAX_FILE_SIZE_MB=20
+
+# =======================================================================
+# 3. QDRANT VECTOR DATABASE (DAY 3)
+# =======================================================================
+#
+# with proper message:
+# Vector database endpoint for storing and searching 384-dimensional chunk embeddings.
+# Default Docker port is 6333. If Docker is not running, the backend automatically
+# falls back to embedded disk vector storage at data/qdrant_local/ without crashing.
+#
+# with proper example:
+QDRANT_URL=http://localhost:6333
+
+# with proper message:
+# API key for Qdrant Cloud. Leave blank when running local Qdrant or embedded storage.
+#
+# with proper example:
+QDRANT_API_KEY=
+
+# with proper message:
+# Qdrant collection name used for hierarchical parent-child vector points.
+#
+# with proper example:
+QDRANT_COLLECTION_NAME=learning_assistant
+QDRANT_BATCH_SIZE=64
+
+# =======================================================================
+# 4. RAG GROUNDED GENERATION & RERANKER (DAY 4)
+# =======================================================================
+#
+# with proper message:
+# Primary Groq API key used for grounded RAG answer generation.
+# Obtain a free key at: https://console.groq.com/keys
+# This key is NEVER exposed to the frontend or browser client.
+#
+# with proper example:
+RAG_API_KEY=gsk_your_groq_api_key_here
+
+# with proper message:
+# Model used for RAG generation. Default is openai/gpt-oss-120b on Groq.
+#
+# with proper example:
+RAG_MODEL=openai/gpt-oss-120b
+
+# with proper message:
+# Cross-encoder reranker relevance threshold (local FlashRank, no API key needed).
+# Retrieval evidence below this threshold triggers CRAG or unified refusal.
+#
+# with proper example:
+RERANK_THRESHOLD=0.35
+
+# with proper message:
+# Maximum number of parent document chunks passed into the LLM context window.
+#
+# with proper example:
+RERANK_TOP_K=4
+
+# =======================================================================
+# 5. DEDICATED AGENT API KEYS & MODELS (DAYS 5 & 6)
+# =======================================================================
+#
+# with proper message:
+# Dedicated Groq API keys for the locked 4-agent architecture.
+# Each agent can use a dedicated key to prevent rate limits, or fall back
+# automatically to RAG_API_KEY if left blank.
+#
+# Agent 1: Query Router & Rewriter Agent
+# with proper example:
+ROUTER_API_KEY=gsk_your_router_api_key_here
+ROUTER_MODEL=llama-3.1-8b-instant
+
+# Agent 2: Corrective RAG (CRAG) Agent
+# with proper example:
+CRAG_API_KEY=gsk_your_crag_api_key_here
+CRAG_MODEL=llama-3.1-8b-instant
+
+# Agent 3: Hallucination & Citation Grader
+# with proper example:
+GRADER_API_KEY=gsk_your_grader_api_key_here
+GRADER_MODEL=llama-3.1-8b-instant
+
+# Agent 4: Adaptive Quiz & Diagnostic Agent
+# with proper example:
+QUIZ_API_KEY=gsk_your_quiz_api_key_here
+QUIZ_MODEL=llama-3.1-8b-instant
+
+# =======================================================================
+# 6. GOOGLE AUTHENTICATION & FRONTEND CONFIGURATION (DAY 7)
+# =======================================================================
+#
+# with proper message:
+# Google OAuth 2.0 Web Client ID for Google Identity Services (GIS).
+# Create credentials at: https://console.cloud.google.com/apis/credentials
+# Ensure http://localhost:3000 is added under 'Authorized JavaScript origins'.
+#
+# with proper example:
+GOOGLE_CLIENT_ID=579242917589-fqs5berd8f4uergvrif5rh9uvge5lrf9.apps.googleusercontent.com
+
+# with proper message:
+# Next.js frontend environment variables (can also be set in frontend/.env.local).
+#
+# with proper example:
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=579242917589-fqs5berd8f4uergvrif5rh9uvge5lrf9.apps.googleusercontent.com
+
+# =======================================================================
+# END OF CONFIGURATION GUIDE
+# =======================================================================

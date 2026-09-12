@@ -18,8 +18,11 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session as DBSession
 
 from app.config import settings
+from app.db.database import get_db
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -35,17 +38,27 @@ class GoogleLoginRequest(BaseModel):
     credential: str = Field(..., description="Google ID Token credential from Google Identity Services")
 
 
+class UpdateProfileRequest(BaseModel):
+    username: str = Field(..., description="User's actual name or username", min_length=1, max_length=100)
+
+
 
 class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user_id: str
-    username: str
+    username: Optional[str] = None
+    email: Optional[str] = None
+    picture: Optional[str] = None
+    auth_provider: Optional[str] = None
 
 
 class UserResponse(BaseModel):
     user_id: str
-    username: str
+    username: Optional[str] = None
+    email: Optional[str] = None
+    picture: Optional[str] = None
+    auth_provider: Optional[str] = None
     role: str = "student"
 
 
@@ -110,6 +123,19 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> str
     return decode_access_token(token)
 
 
+def require_authenticated_user(authorization: Optional[str] = Header(default=None)) -> str:
+    """
+    Strictly requires an authenticated Bearer token.
+    Raises 401 Unauthorized if Authorization header is missing or invalid.
+    """
+    if authorization is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required. Missing Authorization header.",
+        )
+    return get_current_user(authorization)
+
+
 @router.post("/login", response_model=AuthResponse)
 def login(request: LoginRequest):
     """
@@ -125,11 +151,14 @@ def login(request: LoginRequest):
 
     token = create_access_token(username)
     logger.info("User '%s' authenticated successfully.", username)
+    # Rule: Do not invent names. dev-user is a guest session without a user-provided name.
+    actual_name = None if username == "dev-user" else username
     return AuthResponse(
         access_token=token,
         token_type="bearer",
         user_id=username,
-        username=username,
+        username=actual_name,
+        auth_provider="guest" if username == "dev-user" else "local",
     )
 
 
@@ -165,11 +194,6 @@ def verify_google_token(credential: str) -> dict:
         )
 
 
-from sqlalchemy.orm import Session as DBSession
-from app.db.database import get_db
-from app.models.user import User
-
-
 @router.post("/google", response_model=AuthResponse)
 def login_google(
     request: GoogleLoginRequest,
@@ -198,10 +222,12 @@ def login_google(
 
     # Use Google's sub as the permanent, unique user identity (rule: never use email as primary user ID)
     user_id = f"google_{google_sub}"
-    display_name = idinfo.get("name") or idinfo.get("email", "").split("@")[0] or user_id
-    email = idinfo.get("email")
+    # Rule: ONLY verified user-provided name from Google profile; NEVER derive from email or user_id
+    display_name = idinfo.get("name") or None
+    email = idinfo.get("email") or None
+    picture = idinfo.get("picture") or None
 
-    # Find or create PostgreSQL user
+    # Find or create/update user in database
     try:
         existing_user = db.query(User).filter(User.id == user_id).first()
         if not existing_user:
@@ -209,12 +235,29 @@ def login_google(
                 id=user_id,
                 email=email,
                 username=display_name,
+                picture=picture,
+                auth_provider="google",
             )
             db.add(new_user)
             db.commit()
-            logger.info("Created new PostgreSQL user: %s", user_id)
+            logger.info("Created new user: %s", user_id)
         else:
-            logger.info("Found existing PostgreSQL user: %s", user_id)
+            updated = False
+            if display_name and existing_user.username != display_name:
+                existing_user.username = display_name
+                updated = True
+            if email and existing_user.email != email:
+                existing_user.email = email
+                updated = True
+            if picture and existing_user.picture != picture:
+                existing_user.picture = picture
+                updated = True
+            if existing_user.auth_provider != "google":
+                existing_user.auth_provider = "google"
+                updated = True
+            if updated:
+                db.commit()
+            logger.info("Found existing user: %s", user_id)
     except Exception as exc:
         db.rollback()
         logger.error("Error persisting user to database: %s", exc)
@@ -226,17 +269,92 @@ def login_google(
         token_type="bearer",
         user_id=user_id,
         username=display_name,
+        email=email,
+        picture=picture,
+        auth_provider="google",
     )
 
 
 
 
 @router.get("/me", response_model=UserResponse)
-def get_me(current_user: str = Depends(get_current_user)):
+def get_me(
+    current_user: str = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
     """Return the profile of the currently authenticated user."""
+    db_user = db.query(User).filter(User.id == current_user).first()
+    if db_user:
+        return UserResponse(
+            user_id=db_user.id,
+            username=db_user.username,
+            email=db_user.email,
+            picture=db_user.picture,
+            auth_provider=db_user.auth_provider or ("google" if db_user.id.startswith("google_") else "local"),
+            role="student",
+        )
+
+    actual_name = None if current_user == "dev-user" else current_user
     return UserResponse(
         user_id=current_user,
-        username=current_user,
+        username=actual_name,
+        email=None,
+        picture=None,
+        auth_provider="guest" if current_user == "dev-user" else "local",
+        role="student",
+    )
+
+
+@router.put("/profile", response_model=UserResponse)
+def update_profile(
+    request: UpdateProfileRequest,
+    current_user: str = Depends(require_authenticated_user),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Update the authenticated user's display name / username.
+    Security: Uses current_user derived from verified Bearer token; never allows updating other accounts.
+    Email is strictly read-only and immutable.
+    """
+    clean_name = request.username.strip()
+    if not clean_name:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Name cannot be blank.",
+        )
+
+    db_user = db.query(User).filter(User.id == current_user).first()
+    if db_user:
+        db_user.username = clean_name
+        db.commit()
+        db.refresh(db_user)
+        logger.info("Updated profile name for user '%s' to '%s'", current_user, clean_name)
+        return UserResponse(
+            user_id=db_user.id,
+            username=db_user.username,
+            email=db_user.email,
+            picture=db_user.picture,
+            auth_provider=db_user.auth_provider or ("google" if db_user.id.startswith("google_") else "local"),
+            role="student",
+        )
+
+    # If the user doesn't have a record yet (e.g. guest or local session), create one
+    new_user = User(
+        id=current_user,
+        username=clean_name,
+        email=None,
+        auth_provider="guest" if current_user == "dev-user" else "local",
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    logger.info("Created user record on profile update: '%s' with name '%s'", current_user, clean_name)
+    return UserResponse(
+        user_id=new_user.id,
+        username=new_user.username,
+        email=new_user.email,
+        picture=new_user.picture,
+        auth_provider=new_user.auth_provider,
         role="student",
     )
 

@@ -1,23 +1,15 @@
 /**
  * app/login/page.tsx
  *
- * Login page.
+ * Professional Login page.
  *
- * Auth flow:
- *  1. If user already has a valid token in localStorage → redirect to /dashboard immediately.
- *  2. Show Google Sign-In button (renders via Google Identity Services).
- *  3. On Google credential received → POST /auth/google → store token → redirect to /dashboard.
- *
- * "Rendering..." root cause:
- *   The GIS library is loaded via <Script strategy="afterInteractive"> which fires
- *   asynchronously. We poll with setInterval until window.google.accounts.id is ready,
- *   then render the button. The spinner is shown ONLY while waiting for GIS to load.
- *   It is always eventually replaced by the button or an error — never stuck indefinitely.
- *
- * Security:
- *  - Google ID token is verified server-side (FastAPI /auth/google → google-auth-library).
- *  - Frontend never trusts Google token directly; only stores the app JWT returned by backend.
- *  - Google `sub` is the stable user identity; email is display-only.
+ * Authentication & UX Rules:
+ *  - Returning authenticated user visiting /login → instantly redirects to /dashboard (no flash of login UI).
+ *  - Meaningful status: Shows "Signing in..." while authentication is actually in flight.
+ *  - Reliable lifecycle: SUCCESS → authenticate → redirect; FAILURE → show error → stop loading → allow retry.
+ *  - Never hangs on "Rendering..." or leaves the UI stuck indefinitely.
+ *  - Clean Google Identity Services integration with fallback to Guest login.
+ *  - Security: Google ID token verified strictly server-side by FastAPI (/auth/google).
  */
 
 "use client";
@@ -34,23 +26,27 @@ declare global {
 
 export default function LoginPage() {
   const router = useRouter();
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gisReady, setGisReady] = useState(false);
   const [gisTimeout, setGisTimeout] = useState(false);
   const initializedRef = useRef(false);
 
-  // Redirect immediately if already authenticated
+  // 1. Returning authenticated user: redirect to /dashboard immediately
   useEffect(() => {
     if (getToken()) {
       router.replace("/dashboard");
+      return;
     }
+    setCheckingAuth(false);
   }, [router]);
 
-  // Handle the Google credential callback
+  // 2. Google Identity Services credential response
   const handleCredentialResponse = async (response: { credential?: string }) => {
     if (!response?.credential) {
       setError("No credential received from Google. Please try again.");
+      setLoading(false);
       return;
     }
     setLoading(true);
@@ -61,13 +57,14 @@ export default function LoginPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Google authentication failed";
       setError(msg);
-    } finally {
       setLoading(false);
     }
   };
 
-  // Initialize Google Identity Services and render the Sign-In button
+  // 3. Initialize Google Identity Services safely
   useEffect(() => {
+    if (checkingAuth) return;
+
     let intervalId: ReturnType<typeof setInterval> | null = null;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -77,27 +74,32 @@ export default function LoginPage() {
 
       initializedRef.current = true;
 
-      window.google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: handleCredentialResponse,
-        auto_select: false,
-        cancel_on_tap_outside: true,
-      });
-
-      const container = document.getElementById("google-signin-btn");
-      if (container) {
-        container.innerHTML = "";
-        window.google.accounts.id.renderButton(container, {
-          theme: "outline",
-          size: "large",
-          text: "continue_with",
-          shape: "rectangular",
-          width: 300,
-          logo_alignment: "left",
+      try {
+        window.google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: handleCredentialResponse,
+          auto_select: false,
+          cancel_on_tap_outside: true,
         });
+
+        const container = document.getElementById("google-signin-btn");
+        if (container) {
+          container.innerHTML = "";
+          window.google.accounts.id.renderButton(container, {
+            theme: "outline",
+            size: "large",
+            text: "continue_with",
+            shape: "rectangular",
+            width: 300,
+            logo_alignment: "left",
+          });
+        }
+
+        setGisReady(true);
+      } catch (e) {
+        console.warn("Google Sign-In initialization notice:", e);
       }
 
-      setGisReady(true);
       if (intervalId) clearInterval(intervalId);
       if (timeoutId) clearTimeout(timeoutId);
     };
@@ -111,35 +113,50 @@ export default function LoginPage() {
         }
       }, 100);
 
-      // After 8 seconds, stop polling and show a timeout error
+      // 6-second timeout before graceful notification
       timeoutId = setTimeout(() => {
         if (intervalId) clearInterval(intervalId);
         if (!initializedRef.current) {
           setGisTimeout(true);
         }
-      }, 8000);
+      }, 6000);
     }
 
     return () => {
       if (intervalId) clearInterval(intervalId);
       if (timeoutId) clearTimeout(timeoutId);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkingAuth]);
 
-  const handleDevLogin = async () => {
+  const handleGuestLogin = async () => {
+    if (loading) return;
     setLoading(true);
     setError(null);
     try {
       await loginUser("dev-user");
       router.replace("/dashboard");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Sign-in failed";
+      const msg = err instanceof Error ? err.message : "Guest sign-in failed";
       setError(msg);
-    } finally {
       setLoading(false);
     }
   };
+
+  // If already authenticated, show brief non-flashing spinner while redirecting
+  if (checkingAuth) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div className="flex items-center gap-3" style={{ color: "var(--text-muted)" }}>
+          <span
+            className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin"
+            style={{ borderColor: "var(--accent)", borderTopColor: "transparent" }}
+          />
+          <span className="text-sm">Checking session…</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex items-center justify-center px-4 py-12 page-enter">
@@ -171,15 +188,15 @@ export default function LoginPage() {
 
         {/* Error banner */}
         {error && (
-          <div className="mb-5 p-3.5 rounded-lg text-xs text-center bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-400">
+          <div className="mb-5 p-3.5 rounded-xl text-xs text-center bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-400">
             {error}
           </div>
         )}
 
-        {/* Loading overlay */}
+        {/* Signing in active state */}
         {loading && (
           <div
-            className="mb-5 p-3.5 rounded-lg text-xs text-center flex items-center justify-center gap-2"
+            className="mb-5 p-3.5 rounded-xl text-xs text-center flex items-center justify-center gap-2.5 font-medium"
             style={{
               background: "var(--accent-surface)",
               color: "var(--accent-text)",
@@ -190,38 +207,38 @@ export default function LoginPage() {
               className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
               style={{ borderColor: "var(--accent)", borderTopColor: "transparent" }}
             />
-            <span>Verifying with server…</span>
+            <span>Signing in…</span>
           </div>
         )}
 
         {/* Google Sign-In */}
         <div className="flex flex-col items-center py-4 gap-3">
-          {/* GIS renders its button inside this div */}
+          {/* GIS renders its official button inside this container */}
           <div
             id="google-signin-btn"
             className="min-h-[44px] flex items-center justify-center w-full"
           />
 
-          {/* Show spinner while GIS library is loading */}
+          {/* Show spinner ONLY while waiting for Google Identity script to connect */}
           {!gisReady && !gisTimeout && !loading && (
             <div className="flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
               <span
                 className="w-3.5 h-3.5 border-2 border-t-transparent rounded-full animate-spin"
                 style={{ borderColor: "var(--accent)", borderTopColor: "transparent" }}
               />
-              <span>Loading Google Sign-In…</span>
+              <span>Connecting to Google…</span>
             </div>
           )}
 
-          {/* Timeout: GIS failed to load (network issue or blocked) */}
-          {gisTimeout && (
+          {/* Timeout notification: Google script blocked or network slow */}
+          {gisTimeout && !gisReady && (
             <div className="text-xs text-center px-2" style={{ color: "var(--text-muted)" }}>
-              Google Sign-In could not load. Check your internet connection or try refreshing.
+              Google Sign-In is taking longer to load. You can continue as Guest below.
             </div>
           )}
         </div>
 
-        {/* Divider + local access */}
+        {/* Divider + Guest Access */}
         <div
           className="mt-6 pt-6"
           style={{ borderTop: "1px solid var(--border)" }}
@@ -231,9 +248,9 @@ export default function LoginPage() {
           </p>
           <button
             type="button"
-            onClick={handleDevLogin}
+            onClick={handleGuestLogin}
             disabled={loading}
-            className="w-full py-2.5 rounded-xl text-xs font-medium transition-colors disabled:opacity-50"
+            className="w-full py-2.5 rounded-xl text-xs font-semibold transition-colors disabled:opacity-50"
             style={{
               background: "var(--bg-surface-2)",
               color: "var(--text-secondary)",
@@ -241,9 +258,11 @@ export default function LoginPage() {
             }}
             onMouseEnter={(e) => {
               (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)";
+              (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
             }}
             onMouseLeave={(e) => {
               (e.currentTarget as HTMLElement).style.background = "var(--bg-surface-2)";
+              (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)";
             }}
           >
             Continue as Guest

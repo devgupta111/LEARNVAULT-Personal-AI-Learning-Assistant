@@ -126,3 +126,18 @@ body {
 .page-enter {
   animation: fadeIn 0.18s ease-out;
 }
+
+/* ── Hero CTA Button ────────────────────────────────────────────────────────── */
+.hero-cta-btn {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  transition: all 0.15s ease-in-out;
+}
+.hero-cta-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+.hero-cta-btn:active {
+  transform: scale(0.98);
+}

@@ -1477,17 +1477,110 @@ unless implementation evidence requires it.
 - Inline script in `layout.tsx` prevents theme flash on hard reload
 - Theme persists across tabs and page reloads
 
-### Security Maintained
+---
 
-- Google `sub` still used as stable user identity (never email)
-- Google ID token verified server-side in FastAPI (`/auth/google`)
-- Frontend never trusts Google token directly; only stores app JWT
-- JWT derived from `user_id`; never from browser-supplied body fields
-- `router.replace` used on login/redirect to prevent back-button auth bypass
+## Final — Production Polish: Auth + Profile + Theme + Navigation + Full Regression Testing (VERIFIED 2026-09-12)
 
-### Architecture Unchanged
+- **Status**: COMPLETE & FULLY VERIFIED (Full pytest regression suite 205 passed, 14 skipped hermetically, 0 failed across 219 test cases; dedicated Day 7 suite 17/17 passed; Next.js production build passing with 0 errors across all 8 static routes; E2E automated test suite 9/9 passed).
 
-- Exactly 4 agents: Router/Rewriter, CRAG, Grader, Quiz
-- RAG pipeline untouched
-- No new dependencies added
+### 1. Dynamic Logo Navigation (Personal AI Assistant)
+- **Contract Enforced**:
+  - **Unauthenticated User**: Clicking `Personal AI Assistant` navigates to `/` (public landing page).
+  - **Authenticated User**: Clicking `Personal AI Assistant` navigates directly to `/dashboard`. Authenticated users never unexpectedly return to the public landing page via logo clicks.
+  - **Direct URL Access**: If an authenticated user manually browses to `/`, client-side effect immediately redirects them to `/dashboard` without redirect loops.
+
+### 2. Unified Public & Authenticated Theme System
+- **Single System**: One centralized theme engine (`frontend/hooks/useTheme.ts` + `frontend/src/app/globals.css`).
+- **Logged-Out Users**:
+  - Navbar renders `[ Theme ▼ ] [ Sign In ]`.
+  - Logged-out users can change theme freely (`Light`, `Dark`, `Green`) before logging in.
+  - Theme applies immediately, requires no login or backend call, and persists via `localStorage` under `app-theme`.
+- **Logged-In Users**:
+  - Standalone Theme button is removed from the navbar.
+  - Theme control lives inside the Profile dropdown as an interactive submenu (`Theme › [Light, Dark, Green]`).
+  - Active theme displays a clear checkmark indicator.
+  - Theme selected before login remains active after login and survives hard reloads without flashing wrong colors (injected synchronous `<head>` script).
+
+### 3. Authenticated Navbar & Profile Dropdown
+- **Clean Navbar**: Renders `[AI] Personal AI Assistant`, links (`Dashboard`, `Documents`, `RAG Chat`, `Quiz`), and user control `[Avatar] [User Name ▼]`.
+- **Strict Username Display**:
+  - Displays ONLY the user's actual provided name or verified Google account name (e.g. `Dev Kumar`).
+  - NEVER derives names from email, `email.split('@')[0]`, `user_id`, or database UUIDs.
+  - NEVER hardcodes `Student`, `User`, or `Dev`.
+  - If no name was provided (e.g. guest session), renders a clean neutral avatar control without inventing a name.
+  - Email is strictly forbidden from the navbar and dropdown header.
+- **Avatar**:
+  - Displays verified profile image if present.
+  - Generates initials only from actual user-provided names.
+  - Falls back to a clean neutral SVG avatar icon.
+- **Profile Dropdown**:
+  - Header: Avatar + actual display name only.
+  - Menu Items: Profile (`/profile`), Theme submenu (`Light`, `Dark`, `Green`), Sign Out.
+  - Closes automatically on outside click, Escape key, or route navigation.
+
+### 4. Profile Management & Read-Only Email
+- **Profile Page (`/profile`)**:
+  - Displays actual Name, Email, Profile Picture, and Authentication Provider.
+  - "Edit Profile" allows the user to update their display name.
+  - **Email Immutability**: Email is strictly read-only (`[ READ ONLY ]` badge, HTML disabled attribute). Backend `PUT /auth/profile` accepts only `username` and ignores/rejects any attempt to alter email.
+- **Real-Time State Synchronization**:
+  - Updating name in `/profile` calls `PUT /auth/profile` with Bearer token authentication.
+  - Dispatches `"user-updated"` event to synchronize the navbar immediately without requiring a full page reload.
+  - Blank names are rejected with HTTP 422 Unprocessable Entity.
+  - Unauthenticated requests to `PUT /auth/profile` are strictly rejected with HTTP 401 Unauthorized via `require_authenticated_user`.
+
+### 5. Sign Out (Public Landing Page UX)
+- Located inside the Profile dropdown (and on `/profile`).
+- **Required Behavior**:
+  1. Clears application authentication token (`token`) and user object (`user`) from `localStorage`.
+  2. Dispatches `"user-updated"` event to synchronize all mounted components instantly.
+  3. Clears authenticated user state from frontend memory (`currentUser = null`).
+  4. Closes profile dropdown and submenu.
+  5. Implements double-click guard (`loggingOutRef`) to prevent duplicate logout requests or navigation collisions.
+  6. Preserves global user preferences strictly (active theme such as `Green` or `Dark` is retained in `localStorage` under `app-theme`).
+  7. Updates navbar immediately to logged-out state: `Personal AI Assistant` (links to `/`), main links, and `[ Theme ▼ ] [ Sign In ]`.
+  8. Redirects immediately to `/` (Public Landing Page) via `router.replace("/")` (does NOT redirect to `/login`).
+  9. The user can then explicitly click `Sign In` whenever they choose to authenticate again.
+
+### 6. Loading & Performance Eliminating "Rendering..." Hang
+- Replaced all indefinite "Rendering..." spinners with explicit state labels: "Signing in...", "Checking session...", "Connecting to Google...".
+- Fixed `useAuth`: Guaranteed to resolve `loading` state to `false` in all lifecycle paths (SUCCESS → redirect; FAILURE → error notification).
+- Gated all data-fetching effects on protected pages with `if (authLoading) return` to eliminate request races and 401 storms.
+- Added 6-second timeout to Google Identity Services initialization to notify users gracefully rather than hanging forever.
+
+### 7. Route Protection
+- Protected routes: `/dashboard`, `/documents`, `/chat`, `/quiz`, `/profile`.
+- Unauthenticated access redirects immediately to `/login`.
+- Authenticated access to `/login` redirects immediately to `/dashboard`.
+
+### 8. Development UI Cleanup
+- Search across all pages removed engineering labels:
+  - Removed "Day 1-7" and "Locked 4-Agent Architecture" badges.
+  - Removed internal test counts ("240/240 Tests Passing").
+  - Replaced "dev-user" button with user-friendly "Continue as Guest".
+  - Hero CTA buttons given unified styling (`.hero-cta-btn`).
+
+### 9. Preserved 4-Agent RAG & Quiz Architecture
+- Exactly four agents remain:
+  1. Query Router & Rewriter
+  2. CRAG Agent (max 1 retry, refusal on failure)
+  3. Hallucination & Citation Grader (max 1 regeneration with SAME context, no unverified streaming)
+  4. Adaptive Quiz Agent (deterministic auto-grading `submitted_answer == correct_answer`, weak topic detection `< 60%`)
+- No additional agents or pipelines were created.
+
+### 10. Verification Summary
+- **Backend Full Pytest Suite**: 205 passed, 14 skipped (live docker qdrant), 0 failed across 219 items (ran hermetically in 5m34s).
+- **Backend Dedicated Day 7 Suite**: 17 passed, 0 failed (`pytest tests/test_day7.py -v` in 4.64s).
+- **E2E Automated Script (`scratch/verify_final_e2e.py`)**: 9/9 passed:
+  1. `/auth/status` (PASS)
+  2. `/auth/login` (PASS)
+  3. `/auth/me` with Bearer token (PASS)
+  4. `PUT /auth/profile` update name (PASS)
+  5. Profile name persistence (PASS)
+  6. Email immutability during profile update (PASS)
+  7. Blank name rejection 422 (PASS)
+  8. Unauthenticated profile update rejection 401 (PASS)
+  9. Frontend served on port 3000 (PASS)
+- **Frontend Production Build**: `npm run build` completed with 0 errors across all 8 static pages in 2.4s.
+- **Live Google Sign-In**: Confirmed live in server logs (`POST /auth/google` returned 200, authenticating `google_110853262066131569014`).
 

@@ -39,6 +39,8 @@ export function clearToken(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem("token");
   localStorage.removeItem("user");
+  // Notify all listening components (Navbar, pages) to clear user state immediately
+  window.dispatchEvent(new Event("user-updated"));
 }
 
 export function getUser(): User | null {
@@ -55,6 +57,7 @@ export function getUser(): User | null {
 export function setUser(user: User): void {
   if (typeof window === "undefined") return;
   localStorage.setItem("user", JSON.stringify(user));
+  window.dispatchEvent(new Event("user-updated"));
 }
 
 // ─── Authenticated Fetch Wrapper ─────────────────────────────────────────────
@@ -103,7 +106,10 @@ export async function loginUser(
   setToken(data.access_token);
   setUser({
     user_id: data.user_id,
-    username: data.username,
+    username: data.username || null,
+    email: data.email || null,
+    picture: data.picture || null,
+    auth_provider: data.auth_provider || (data.user_id === "dev-user" ? "guest" : "local"),
     role: "student",
   });
   return data;
@@ -127,7 +133,10 @@ export async function loginWithGoogle(
   setToken(data.access_token);
   setUser({
     user_id: data.user_id,
-    username: data.username,
+    username: data.username || null,
+    email: data.email || null,
+    picture: data.picture || null,
+    auth_provider: data.auth_provider || "google",
     role: "student",
   });
   return data;
@@ -138,7 +147,26 @@ export async function getMe(): Promise<User> {
   if (!res.ok) {
     throw new Error("Failed to load user profile");
   }
-  return res.json();
+  const profile: User = await res.json();
+  setUser(profile);
+  return profile;
+}
+
+export async function updateProfile(username: string): Promise<User> {
+  const res = await authFetch("/auth/profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to update profile" }));
+    throw new Error(err.detail || "Failed to update profile");
+  }
+
+  const profile: User = await res.json();
+  setUser(profile);
+  return profile;
 }
 
 

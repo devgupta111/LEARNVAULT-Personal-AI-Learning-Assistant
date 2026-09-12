@@ -17,6 +17,8 @@ class User(Base):
     id = Column(String(255), primary_key=True, index=True)
     email = Column(String(255), nullable=True, index=True)
     username = Column(String(255), nullable=True)
+    picture = Column(String(1024), nullable=True)
+    auth_provider = Column(String(50), nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
