@@ -1,10 +1,84 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+ * globals.css
+ *
+ * Three themes: light | dark | green
+ * Applied via data-theme attribute on <html> by useTheme hook.
+ * Tailwind dark: utilities are activated when .dark class is present on <html>.
+ *
+ * CSS custom properties used throughout the app for consistent theming.
+ */
+
+/* ── Base reset ────────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
+/* ── Light theme (default) ─────────────────────────────────────────────────── */
+:root,
+[data-theme="light"] {
+  --bg-base: #f8f9fb;
+  --bg-surface: #ffffff;
+  --bg-surface-2: #f1f5f9;
+  --bg-hover: #e8edf4;
+  --border: #e2e8f0;
+  --border-subtle: #f0f4f8;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-surface: #ede9fe;
+  --accent-text: #4338ca;
+  --accent-border: #c4b5fd;
+  --foreground: #0f172a;
+  --background: #f8f9fb;
+}
+
+/* ── Dark theme ────────────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --bg-base: #09090b;
+  --bg-surface: #18181b;
+  --bg-surface-2: #27272a;
+  --bg-hover: #3f3f46;
+  --border: #27272a;
+  --border-subtle: #1c1c1f;
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --accent: #818cf8;
+  --accent-hover: #a5b4fc;
+  --accent-surface: #1e1b4b;
+  --accent-text: #a5b4fc;
+  --accent-border: #3730a3;
+  --foreground: #fafafa;
+  --background: #09090b;
+}
+
+/* ── Green theme ───────────────────────────────────────────────────────────── */
+[data-theme="green"] {
+  --bg-base: #0a0f0a;
+  --bg-surface: #111811;
+  --bg-surface-2: #162016;
+  --bg-hover: #1e2e1e;
+  --border: #1a2e1a;
+  --border-subtle: #142014;
+  --text-primary: #e8f5e8;
+  --text-secondary: #86a986;
+  --text-muted: #5c7a5c;
+  --accent: #22c55e;
+  --accent-hover: #16a34a;
+  --accent-surface: #052e16;
+  --accent-text: #4ade80;
+  --accent-border: #166534;
+  --foreground: #e8f5e8;
+  --background: #0a0f0a;
+}
+
+/* ── Tailwind inline theme tokens ──────────────────────────────────────────── */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -12,15 +86,43 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ── Base body styles ──────────────────────────────────────────────────────── */
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-geist-sans, Arial, Helvetica, sans-serif);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ── Focus ring ────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Smooth page transitions ────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter {
+  animation: fadeIn 0.18s ease-out;
 }

@@ -124,63 +124,50 @@ def detect_weak_topics(
     Returns:
         List of weak topic strings (empty if no history or all topics are strong).
     """
-    # Fetch all quizzes for this user+document
+    # Fetch all quizzes for this user+document ordered newest first
     quizzes = (
         db.query(Quiz)
         .filter(Quiz.user_id == user_id, Quiz.document_id == document_id)
+        .order_by(Quiz.created_at.desc())
         .all()
     )
 
     if not quizzes:
         return []
 
-    # Build a map: topic -> {correct: int, total: int}
-    topic_stats: Dict[str, Dict[str, int]] = {}
-    quiz_id_to_quiz: Dict[str, Quiz] = {q.id: q for q in quizzes}
+    # Map each unique topic to its latest attempt accuracy
+    latest_topic_acc: Dict[str, float] = {}
 
     for quiz in quizzes:
         topic = quiz.topic or "General"
-        if topic not in topic_stats:
-            topic_stats[topic] = {"correct": 0, "total": 0}
+        if topic in latest_topic_acc:
+            continue  # Already obtained the newest result for this topic
 
-        # Parse questions to get correct_answer list
-        try:
-            questions = json.loads(quiz.questions)
-        except (json.JSONDecodeError, TypeError):
-            continue
-
-        quiz_total = len(questions)
-        if quiz_total == 0:
-            continue
-
-        # Find all attempts for this quiz
-        attempts = (
+        latest_attempt = (
             db.query(QuizAttempt)
             .filter(QuizAttempt.quiz_id == quiz.id, QuizAttempt.user_id == user_id)
-            .all()
+            .order_by(QuizAttempt.created_at.desc())
+            .first()
         )
 
-        for attempt in attempts:
-            topic_stats[topic]["total"] += quiz_total
-            topic_stats[topic]["correct"] += attempt.score
+        if latest_attempt is not None:
+            # QuizAttempt stores percentage (0-100) or score
+            acc = latest_attempt.percentage / 100.0 if latest_attempt.percentage is not None else (
+                latest_attempt.score / 5.0
+            )
+            latest_topic_acc[topic] = acc
 
-    weak_topics = []
-    for topic, stats in topic_stats.items():
-        if stats["total"] == 0:
-            continue
-        accuracy = stats["correct"] / stats["total"]
-        logger.debug(
-            "Topic '%s': accuracy=%.2f (correct=%d, total=%d)",
-            topic, accuracy, stats["correct"], stats["total"],
-        )
-        if accuracy < WEAK_TOPIC_THRESHOLD:
-            weak_topics.append(topic)
+    weak_topics = [
+        topic for topic, acc in latest_topic_acc.items()
+        if acc < WEAK_TOPIC_THRESHOLD
+    ]
 
     logger.info(
         "Weak topic detection for user=%s doc=%s: weak_topics=%s",
         user_id, document_id, weak_topics,
     )
     return weak_topics
+
 
 
 def retrieve_chunks_for_quiz(

@@ -26,10 +26,12 @@ from app.services.pipeline_service import run_ingestion_pipeline
 from app.services.document_service import (
     get_document_by_id,
     get_all_documents,
+    get_documents_by_user,
     update_document_status,
     document_to_summary,
     document_to_detail,
 )
+from app.api.auth import get_current_user
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 logger = logging.getLogger(__name__)
@@ -38,7 +40,12 @@ ALLOWED_EXTENSIONS = {".pdf"}
 ALLOWED_MIME_TYPES = {"application/pdf"}
 
 
-def process_document_background(document_id: str, file_path: str, subject: str = "General") -> None:
+def process_document_background(
+    document_id: str,
+    file_path: str,
+    subject: str = "General",
+    user_id: str = "dev-user",
+) -> None:
     """
     Background task: run the full Day 2 ingestion pipeline.
 
@@ -59,7 +66,7 @@ def process_document_background(document_id: str, file_path: str, subject: str =
             document_id=document_id,
             file_path=file_path,
             subject=subject,
-            user_id="dev-user",
+            user_id=user_id,
         )
         update_document_status(
             db,
@@ -100,6 +107,7 @@ async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     subject: str = Form(default="General"),
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DocumentUploadResponse:
     """
@@ -109,8 +117,7 @@ async def upload_document(
     status PROCESSING, and starts background text extraction.
 
     Returns HTTP 202 immediately so the client does not wait for extraction.
-
-    Note: user_id is a development placeholder until JWT auth is implemented.
+    Derives user_id strictly from the authenticated token/dependency.
     """
     suffix = Path(file.filename).suffix.lower()
     if suffix not in ALLOWED_EXTENSIONS:
@@ -152,10 +159,9 @@ async def upload_document(
         logger.error("Failed to save uploaded file: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to save the uploaded file.")
 
-    # DEV PLACEHOLDER: user_id is hardcoded until JWT auth is added (later phase)
     doc = Document(
         id=document_id,
-        user_id="dev-user",
+        user_id=current_user,
         filename=file.filename,
         subject=subject,
         file_path=str(file_path),
@@ -171,29 +177,46 @@ async def upload_document(
         logger.error("Database error saving document: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to create document record.")
 
-    background_tasks.add_task(process_document_background, document_id, str(file_path), subject)
+    background_tasks.add_task(
+        process_document_background,
+        document_id,
+        str(file_path),
+        subject,
+        current_user,
+    )
 
     return DocumentUploadResponse(document_id=document_id, status="PROCESSING")
 
 
 @router.get("/", response_model=List[DocumentSummary])
-def list_documents(db: Session = Depends(get_db)) -> List[DocumentSummary]:
+def list_documents(
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> List[DocumentSummary]:
     """
-    List all uploaded documents.
-
-    Note: returns documents for all users (dev mode — no auth).
+    List uploaded documents for the authenticated user.
     """
-    documents = get_all_documents(db)
+    documents = get_documents_by_user(db, current_user)
     return [document_to_summary(doc) for doc in documents]
 
 
 @router.get("/{document_id}", response_model=DocumentDetail)
-def get_document(document_id: str, db: Session = Depends(get_db)) -> DocumentDetail:
-    """Get status and metadata for a specific document."""
+def get_document(
+    document_id: str,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DocumentDetail:
+    """Get status and metadata for a specific document with user ownership check."""
     doc = get_document_by_id(db, document_id)
     if doc is None:
         raise HTTPException(
             status_code=404,
             detail=f"Document '{document_id}' not found.",
         )
+    if doc.user_id != current_user:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to access this document.",
+        )
     return document_to_detail(doc)
+

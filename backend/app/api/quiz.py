@@ -75,18 +75,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/quiz", tags=["Quiz"])
 
 
-# ─── Auth dependency (same dev stub as chat.py) ────────────────────────────────
+from app.api.auth import get_current_user  # Day 7 authenticated user dependency
 
-def get_current_user() -> str:
-    """
-    Returns the authenticated user_id.
-
-    Day 6: Same hardcoded dev-user stub used in chat.py.
-    Day 7 will replace this with real JWT authentication.
-
-    NEVER trust a browser-supplied user_id. Always use this dependency.
-    """
-    return "dev-user"
 
 
 # ─── Internal helpers ──────────────────────────────────────────────────────────

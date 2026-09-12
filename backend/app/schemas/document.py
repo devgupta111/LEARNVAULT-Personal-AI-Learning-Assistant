@@ -21,6 +21,8 @@ class DocumentSummary(BaseModel):
     subject: Optional[str]
     status: str
     page_count: Optional[int]
+    created_at: Optional[datetime] = None
+
 
 
 class DocumentDetail(BaseModel):

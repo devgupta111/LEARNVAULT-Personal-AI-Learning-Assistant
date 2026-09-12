@@ -51,10 +51,12 @@ Grader does NOT trigger CRAG. Grader failure -> exactly one regeneration.
 import datetime
 import json
 import logging
+import re
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session as DBSession
 
 from app.config import settings
@@ -80,24 +82,12 @@ from app.services.llm_service import (
 from app.services.query_router_service import route_and_rewrite_query
 from app.services.crag_service import generate_crag_query
 from app.services.grader_service import grade_answer  # Day 6
+from app.api.auth import get_current_user  # Day 7 authenticated user dependency
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Chat"])
 
-# ─── Auth dependency (dev stub — replaced by JWT in Day 6) ────────────────────
-
-def get_current_user() -> str:
-    """
-    Returns the authenticated user_id.
-
-    Day 4/5/6: Returns a hardcoded dev-user matching the document model default.
-    Day 7 will replace this with a real JWT dependency that decodes the token
-    and returns the actual user_id.
-
-    NEVER trust a browser-supplied user_id. Always use this dependency.
-    """
-    return "dev-user"
 
 
 # ─── Helper: load recent chat history ─────────────────────────────────────────
@@ -221,6 +211,7 @@ def create_session(
 
 @router.get("/sessions", response_model=List[SessionResponse])
 def list_sessions(
+    document_id: Optional[str] = Query(default=None, description="Filter sessions by document ID"),
     current_user: str = Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
@@ -228,14 +219,13 @@ def list_sessions(
     GET /sessions — List all sessions for the current user.
 
     Returns sessions in descending creation order (newest first).
-    A user can only see their own sessions.
+    A user can only see their own sessions. If document_id is specified,
+    filters to sessions for that specific document.
     """
-    sessions = (
-        db.query(ChatSession)
-        .filter(ChatSession.user_id == current_user)
-        .order_by(ChatSession.created_at.desc())
-        .all()
-    )
+    query = db.query(ChatSession).filter(ChatSession.user_id == current_user)
+    if document_id:
+        query = query.filter(ChatSession.document_id == document_id)
+    sessions = query.order_by(ChatSession.created_at.desc()).all()
     return [
         SessionResponse(
             session_id=s.id,
@@ -300,102 +290,36 @@ def list_messages(
     return result
 
 
-# ─── Main chat endpoint ───────────────────────────────────────────────────────
+# ─── Verified RAG generation integrating Agents 1, 2, and 3 ────────────────────
 
-@router.post("/chat", response_model=ChatResponse)
-def chat(
-    request: ChatRequest,
-    current_user: str = Depends(get_current_user),
-    db: DBSession = Depends(get_db),
-):
+def _generate_verified_answer(
+    session_id: str,
+    document_id: str,
+    user_message: str,
+    current_user: str,
+    history: List[dict],
+) -> tuple[str, List[dict]]:
     """
-    POST /chat — Day-6 RAG chat endpoint with Query Router/Rewriter, CRAG, and Grader (non-streaming JSON).
+    Executes the full verified RAG pipeline integrating Agents 1, 2, and 3.
 
-    Day-6 Pipeline:
-      1. Validate session ownership + document matching
-      2. Validate document ownership + READY status
-      3. Load last 3-4 chat messages (chronological order)
-      4. Query Router & Rewriter Agent (single structured LLM call):
-         - direct_chat: Casual conversation -> direct LLM (skips retrieval)
-         - quiz_mode:   Quiz request -> refer user to /quiz/generate endpoint
-         - rag_query:   Study material question -> rewritten query for retrieval
-      5. Initial Retrieval (Top-15 Qdrant -> Cross-encoder rerank)
-      6. Evidence check:
-         - Strong -> Grounded LLM generation -> Grader (Agent 3) -> Citations -> Persist & Return
-         - Weak   -> CRAG Agent:
-                     - Generates 1 alternative query
-                     - Retrieves and reranks exactly once again
-                     - If strong -> Grounded LLM generation -> Grader -> Citations -> Persist & Return
-                     - If weak (or CRAG failed) -> Standard Day-4 refusal
+    Steps:
+      1. Agent 1: Query Router & Rewriter (direct_chat / quiz_mode / rag_query)
+      2. If rag_query: Qdrant retrieval + Cross-encoder rerank
+      3. If weak evidence: Agent 2 (CRAG) executes exactly ONE retry
+      4. If still weak: returns unified REFUSAL_MESSAGE
+      5. Grounded RAG answer generation from parent contexts
+      6. Agent 3: Hallucination & Citation Grader
+         - PASS: return verified answer + citations
+         - FAIL: regenerate ONCE using SAME parent contexts (no CRAG, no new retrieval)
+           - PASS: return verified regenerated answer + citations
+           - FAIL: return unified REFUSAL_MESSAGE + empty citations
     """
-    session_id = request.session_id
-    document_id = request.document_id
-    user_message = request.message
-
-    # ── Step 1: Validate session ownership ───────────────────────────────────
-    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
-    if session is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Session '{session_id}' not found.",
-        )
-    if session.user_id != current_user:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to access this session.",
-        )
-    # Ensure the document_id in the request matches the session's document
-    if session.document_id != document_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"document_id '{document_id}' does not match "
-                f"session document '{session.document_id}'."
-            ),
-        )
-
-    # ── Step 2: Validate document ownership + READY status ───────────────────
-    document = db.query(Document).filter(Document.id == document_id).first()
-    if document is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Document '{document_id}' not found.",
-        )
-    if document.user_id != current_user:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to access this document.",
-        )
-    if document.status != "READY":
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                f"Document is not ready for chat (status: {document.status}). "
-                "Wait for processing to complete."
-            ),
-        )
-
-    # ── Step 3: Load recent chat history (last 4 turns, chronological) ───────
-    history = _load_chat_history(session_id=session_id, db=db, limit=4)
-    logger.info(
-        "Chat: session=%s, user=%s, doc=%s, history_turns=%d, query='%s...'",
-        session_id,
-        current_user,
-        document_id,
-        len(history),
-        user_message[:60],
-    )
-
-    # ── Step 4: Query Router & Rewriter Agent ────────────────────────────────
+    # ── Step 1: Query Router & Rewriter Agent ────────────────────────────────
     router_output = route_and_rewrite_query(query=user_message, history=history)
     selected_route = router_output.route
-    logger.info(
-        "Router: selected route='%s' for session=%s",
-        selected_route,
-        session_id,
-    )
+    logger.info("Router: selected route='%s' for session=%s", selected_route, session_id)
 
-    # ── Path A: Direct Conversational Chat (no retrieval) ────────────────────
+    # Path A: Direct Conversational Chat (no retrieval)
     if selected_route == "direct_chat":
         logger.info("Direct chat selected for session=%s. Skipping retrieval.", session_id)
         try:
@@ -412,63 +336,20 @@ def chat(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="An error occurred during conversational response generation.",
             )
+        return answer, []
 
-        # Persist user message + assistant answer
-        now = datetime.datetime.now(datetime.timezone.utc)
-        try:
-            _save_message(session_id, "user", user_message, [], db, created_at=now)
-            _save_message(
-                session_id,
-                "assistant",
-                answer,
-                [],
-                db,
-                created_at=now + datetime.timedelta(milliseconds=1),
-            )
-        except Exception as exc:
-            logger.error("Failed to persist direct chat messages: %s", exc)
-
-        return ChatResponse(
-            session_id=session_id,
-            answer=answer,
-            citations=[],
-        )
-
-    # ── Path B: Quiz Mode ──────────────────────────────────────────────────
-    # Day 6: Quiz generation is now implemented via /quiz/generate endpoint.
-    # Redirect the user to use the dedicated quiz API.
+    # Path B: Quiz Mode
     if selected_route == "quiz_mode":
         logger.info("Quiz mode selected for session=%s. Routing to quiz API.", session_id)
         answer = (
-            "Quiz mode detected. Use the POST /quiz/generate endpoint to generate an "
-            "adaptive quiz from your document. You can also ask study questions here."
+            "Quiz mode detected. Use the dedicated Quiz interface or POST /quiz/generate "
+            "endpoint to generate an adaptive quiz from your document. You can also ask study questions here."
         )
-        now = datetime.datetime.now(datetime.timezone.utc)
-        try:
-            _save_message(session_id, "user", user_message, [], db, created_at=now)
-            _save_message(
-                session_id,
-                "assistant",
-                answer,
-                [],
-                db,
-                created_at=now + datetime.timedelta(milliseconds=1),
-            )
-        except Exception as exc:
-            logger.error("Failed to persist quiz mode messages: %s", exc)
+        return answer, []
 
-        return ChatResponse(
-            session_id=session_id,
-            answer=answer,
-            citations=[],
-        )
-
-    # ── Path C: RAG Query with Document Retrieval ────────────────────────────
-    # The rewritten query replaces ONLY the query used for retrieval.
-    # The original user message is preserved for database persistence and grounded context.
+    # Path C: RAG Query with Document Retrieval
     retrieval_query = router_output.rewritten_query or user_message
 
-    # Initial retrieval: Embed -> Qdrant Top-15 -> Cross-encoder rerank
     try:
         parent_results, is_weak = search_and_rerank(
             query=retrieval_query,
@@ -490,16 +371,14 @@ def chat(
             detail="An error occurred during document retrieval.",
         )
 
-    # ── Step 5: Evidence Check & CRAG Corrective Retrieval ───────────────────
+    # Evidence check & CRAG Corrective Retrieval
     if is_weak:
         logger.info(
             "Initial retrieval weak for session=%s (query='%s...'). Triggering CRAG Agent.",
             session_id,
             retrieval_query[:50],
         )
-
         crag_output = generate_crag_query(query=retrieval_query, history=history)
-
         if crag_output and crag_output.alternative_query:
             logger.info(
                 "CRAG: Performing exactly one retry with alternative query='%s'",
@@ -520,33 +399,11 @@ def chat(
             logger.info("CRAG: Alternative query generation failed or empty. Defaulting to refusal.")
             is_weak = True
 
-    # If still weak after CRAG retry (or if CRAG failed) -> return Day-4 refusal
     if is_weak:
-        logger.info(
-            "Evidence remains weak after CRAG evaluation for session=%s → returning refusal",
-            session_id,
-        )
-        try:
-            now = datetime.datetime.now(datetime.timezone.utc)
-            _save_message(session_id, "user", user_message, [], db, created_at=now)
-            _save_message(
-                session_id,
-                "assistant",
-                REFUSAL_MESSAGE,
-                [],
-                db,
-                created_at=now + datetime.timedelta(milliseconds=1),
-            )
-        except Exception as exc:
-            logger.error("Failed to persist refusal messages: %s", exc)
+        logger.info("Evidence remains weak after CRAG for session=%s -> returning refusal", session_id)
+        return REFUSAL_MESSAGE, []
 
-        return ChatResponse(
-            session_id=session_id,
-            answer=REFUSAL_MESSAGE,
-            citations=[],
-        )
-
-    # ── Step 6: Grounded LLM Generation ──────────────────────────────────────
+    # Grounded LLM Generation
     logger.info(
         "Generating grounded answer from %d parent contexts for session=%s",
         len(parent_results),
@@ -571,10 +428,8 @@ def chat(
             detail="An error occurred during answer generation.",
         )
 
-    # ── Step 7: Hallucination & Citation Grader (Agent 3) ───────────────────────
-    # Extract citations BEFORE grading so the grader can verify them.
+    # Agent 3: Hallucination & Citation Grader
     raw_citations = get_citations(parent_results)
-
     logger.info("Grader: evaluating initial answer for session=%s", session_id)
     grader_result = grade_answer(
         question=user_message,
@@ -584,30 +439,23 @@ def chat(
     )
 
     if not grader_result.grounded:
-        # ─ GRADER FAIL: Regenerate exactly ONCE with the SAME retrieved context ─
         logger.info(
-            "Grader FAIL (confidence=%.2f): Regenerating once with SAME context for session=%s. "
-            "Critique: '%s'",
+            "Grader FAIL (confidence=%.2f): Regenerating once with SAME context for session=%s. Critique: '%s'",
             grader_result.confidence,
             session_id,
             grader_result.critique[:120] if grader_result.critique else "",
         )
-
-        # Regenerate using the SAME parent_results. No new retrieval. No CRAG.
         try:
             answer = generate_rag_response(
                 query=user_message,
-                parent_results=parent_results,  # SAME context — not re-retrieved
+                parent_results=parent_results,  # SAME context — no re-retrieval, no CRAG
                 history=history,
             )
         except Exception as exc:
-            logger.error(
-                "Regeneration attempt failed for session=%s: %s. Returning refusal.", session_id, exc
-            )
+            logger.error("Regeneration attempt failed for session=%s: %s", session_id, exc)
             answer = None
 
         if answer:
-            # Grade the regenerated answer
             raw_citations = get_citations(parent_results)
             regen_grader_result = grade_answer(
                 question=user_message,
@@ -615,60 +463,90 @@ def chat(
                 parent_results=parent_results,
                 citations=raw_citations,
             )
-
             if regen_grader_result.grounded:
-                # Regenerated answer passed grading
                 logger.info(
                     "Grader PASS after regeneration (confidence=%.2f) for session=%s",
                     regen_grader_result.confidence,
                     session_id,
                 )
-                # Fall through to persist the regenerated answer below
             else:
-                # Regenerated answer ALSO failed grading -> refusal
                 logger.info(
-                    "Grader FAIL after regeneration (confidence=%.2f) for session=%s. "
-                    "Returning unified refusal.",
+                    "Grader FAIL after regeneration (confidence=%.2f) for session=%s. Returning refusal.",
                     regen_grader_result.confidence,
                     session_id,
                 )
-                answer = None  # Signal refusal path below
-        # else: regeneration failed entirely -> answer is already None -> refusal
+                answer = None
 
         if answer is None:
-            # Final refusal: persist and return Day-4 unified refusal
-            try:
-                now = datetime.datetime.now(datetime.timezone.utc)
-                _save_message(session_id, "user", user_message, [], db, created_at=now)
-                _save_message(
-                    session_id,
-                    "assistant",
-                    REFUSAL_MESSAGE,
-                    [],
-                    db,
-                    created_at=now + datetime.timedelta(milliseconds=1),
-                )
-            except Exception as exc:
-                logger.error("Failed to persist grader-refusal messages: %s", exc)
-            return ChatResponse(
-                session_id=session_id,
-                answer=REFUSAL_MESSAGE,
-                citations=[],
-            )
+            return REFUSAL_MESSAGE, []
     else:
-        logger.info(
-            "Grader PASS (confidence=%.2f) for session=%s",
-            grader_result.confidence,
-            session_id,
+        logger.info("Grader PASS (confidence=%.2f) for session=%s", grader_result.confidence, session_id)
+
+    return answer, raw_citations
+
+
+# ─── Main chat endpoint (non-streaming JSON) ───────────────────────────────────
+
+@router.post("/chat", response_model=ChatResponse)
+def chat(
+    request: ChatRequest,
+    current_user: str = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """
+    POST /chat — Day-6/Day-7 RAG chat endpoint with Router, CRAG, and Grader (non-streaming JSON).
+    """
+    session_id = request.session_id
+    document_id = request.document_id
+    user_message = request.message
+
+    # Validate session ownership
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session '{session_id}' not found.",
+        )
+    if session.user_id != current_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this session.",
+        )
+    if session.document_id != document_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"document_id '{document_id}' does not match session document '{session.document_id}'.",
         )
 
-    # ── Step 8: Extract citations for the accepted answer ───────────────────────────
-    # raw_citations was already computed above (and recomputed for regeneration)
-    citation_items = [CitationItem(**c) for c in raw_citations]
+    # Validate document ownership + READY status
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document '{document_id}' not found.",
+        )
+    if document.user_id != current_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this document.",
+        )
+    if document.status != "READY":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Document is not ready for chat (status: {document.status}). Wait for processing to complete.",
+        )
 
-    # ── Step 9: Persist user message + accepted answer ────────────────────────────────
+    history = _load_chat_history(session_id=session_id, db=db, limit=4)
+    answer, raw_citations = _generate_verified_answer(
+        session_id=session_id,
+        document_id=document_id,
+        user_message=user_message,
+        current_user=current_user,
+        history=history,
+    )
+
+    now = datetime.datetime.now(datetime.timezone.utc)
     try:
-        now = datetime.datetime.now(datetime.timezone.utc)
         _save_message(session_id, "user", user_message, [], db, created_at=now)
         _save_message(
             session_id,
@@ -681,17 +559,133 @@ def chat(
     except Exception as exc:
         logger.error("Failed to persist chat messages: %s", exc)
 
-    logger.info(
-        "Chat complete: session=%s, answer_len=%d, citations=%d",
-        session_id,
-        len(answer),
-        len(citation_items),
-    )
-
+    citation_items = [CitationItem(**c) for c in raw_citations]
     return ChatResponse(
         session_id=session_id,
         answer=answer,
         citations=citation_items,
+    )
+
+
+# ─── Day 7: SSE Streaming chat endpoint ───────────────────────────────────────
+
+@router.post("/chat/stream")
+def chat_stream(
+    request: ChatRequest,
+    current_user: str = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """
+    POST /chat/stream — Day-7 RAG chat endpoint with Server-Sent Events (SSE) streaming.
+
+    Contract:
+      data: {"token": "..."}\n\n
+      data: {"done": true, "citations": [...]}\n\n
+
+    Refusal:
+      data: {"token": "I couldn't find sufficient information in your uploaded documents to answer that question."}\n\n
+      data: {"done": true, "citations": []}\n\n
+
+    CRITICAL RULE 15:
+      Unverified answers are NEVER streamed.
+      The LLM generates complete candidate answer -> Grader validates it -> only upon PASS
+      are verified tokens streamed via SSE.
+    """
+    session_id = request.session_id
+    document_id = request.document_id
+    user_message = request.message
+
+    # Validate session ownership
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session '{session_id}' not found.",
+        )
+    if session.user_id != current_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this session.",
+        )
+    if session.document_id != document_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"document_id '{document_id}' does not match session document '{session.document_id}'.",
+        )
+
+    # Validate document ownership + READY status
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document '{document_id}' not found.",
+        )
+    if document.user_id != current_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this document.",
+        )
+    if document.status != "READY":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Document is not ready for chat (status: {document.status}). Wait for processing to complete.",
+        )
+
+    history = _load_chat_history(session_id=session_id, db=db, limit=4)
+
+    def sse_event_stream():
+        from app.db.database import SessionLocal
+        stream_db = SessionLocal()
+        try:
+            # Complete answer is generated & graded BEFORE streaming any token (Rule 15)
+            answer, raw_citations = _generate_verified_answer(
+                session_id=session_id,
+                document_id=document_id,
+                user_message=user_message,
+                current_user=current_user,
+                history=history,
+            )
+
+            # Persist user message + verified answer to DB
+            now = datetime.datetime.now(datetime.timezone.utc)
+            _save_message(session_id, "user", user_message, [], stream_db, created_at=now)
+            _save_message(
+                session_id,
+                "assistant",
+                answer,
+                raw_citations,
+                stream_db,
+                created_at=now + datetime.timedelta(milliseconds=1),
+            )
+
+            if answer == REFUSAL_MESSAGE:
+                yield f"data: {json.dumps({'token': REFUSAL_MESSAGE})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'citations': []})}\n\n"
+            else:
+                # Stream verified tokens
+                chunks = re.findall(r"\S+|\s+", answer)
+                for chunk in chunks:
+                    yield f"data: {json.dumps({'token': chunk})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'citations': raw_citations})}\n\n"
+
+        except HTTPException as exc:
+            yield f"data: {json.dumps({'error': exc.detail})}\n\n"
+            yield f"data: {json.dumps({'done': True, 'citations': []})}\n\n"
+        except Exception as exc:
+            logger.exception("Error in SSE chat stream for session %s: %s", session_id, exc)
+            yield f"data: {json.dumps({'error': 'An error occurred during chat streaming.'})}\n\n"
+            yield f"data: {json.dumps({'done': True, 'citations': []})}\n\n"
+        finally:
+            stream_db.close()
+
+    return StreamingResponse(
+        sse_event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -702,7 +696,7 @@ def chat_status():
     """Status check for the chat module."""
     return {
         "status": "active",
-        "day": 6,
+        "day": 7,
         "features": [
             "Core RAG pipeline",
             "Grounded answer generation",
@@ -715,9 +709,9 @@ def chat_status():
             "Hallucination & Citation Grader (Agent 3) — grounding verification",
             "Exactly one answer regeneration on grader failure (same context)",
             "Unified refusal on second grader failure",
+            "SSE streaming (POST /chat/stream)",
+            "Frontend integration (Next.js)",
         ],
-        "deferred": [
-            "SSE streaming (Day 7)",
-            "Frontend integration (Day 7)",
-        ],
+        "deferred": [],
     }
+

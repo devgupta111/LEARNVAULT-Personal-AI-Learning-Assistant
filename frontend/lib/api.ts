@@ -1,0 +1,381 @@
+/**
+ * lib/api.ts
+ *
+ * Backend API client for Personal AI Learning Assistant.
+ * Handles authentication, documents, sessions, chat SSE streaming, and quizzes.
+ */
+
+import {
+  AuthResponse,
+  ChatMessage,
+  ChatSession,
+  CitationItem,
+  DocumentDetail,
+  DocumentSummary,
+  DocumentUploadResponse,
+  QuizHistoryItem,
+  QuizDetail,
+  QuizSubmissionResult,
+  User,
+} from "../types";
+
+
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+// ─── Token and User Helpers ──────────────────────────────────────────────────
+
+export function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("token");
+}
+
+export function setToken(token: string): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem("token", token);
+}
+
+export function clearToken(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+}
+
+export function getUser(): User | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem("user");
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function setUser(user: User): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem("user", JSON.stringify(user));
+}
+
+// ─── Authenticated Fetch Wrapper ─────────────────────────────────────────────
+
+async function authFetch(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  const token = getToken();
+  const headers = new Headers(options.headers || {});
+
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers,
+  });
+
+  return response;
+}
+
+export const GOOGLE_CLIENT_ID =
+  process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+  "579242917589-fqs5berd8f4uergvrif5rh9uvge5lrf9.apps.googleusercontent.com";
+
+// ─── Authentication API ──────────────────────────────────────────────────────
+
+export async function loginUser(
+  username: string,
+  password?: string
+): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ detail: "Login failed" }));
+    throw new Error(errorData.detail || `Login failed with status ${res.status}`);
+  }
+
+  const data: AuthResponse = await res.json();
+  setToken(data.access_token);
+  setUser({
+    user_id: data.user_id,
+    username: data.username,
+    role: "student",
+  });
+  return data;
+}
+
+export async function loginWithGoogle(
+  credential: string
+): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE_URL}/auth/google`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ credential }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ detail: "Google Sign-In failed" }));
+    throw new Error(errorData.detail || `Google login failed with status ${res.status}`);
+  }
+
+  const data: AuthResponse = await res.json();
+  setToken(data.access_token);
+  setUser({
+    user_id: data.user_id,
+    username: data.username,
+    role: "student",
+  });
+  return data;
+}
+
+export async function getMe(): Promise<User> {
+  const res = await authFetch("/auth/me");
+  if (!res.ok) {
+    throw new Error("Failed to load user profile");
+  }
+  return res.json();
+}
+
+
+// ─── Documents API ───────────────────────────────────────────────────────────
+
+export async function getDocuments(): Promise<DocumentSummary[]> {
+  const res = await authFetch("/documents/");
+  if (!res.ok) {
+    throw new Error("Failed to fetch documents");
+  }
+  return res.json();
+}
+
+export async function getDocument(id: string): Promise<DocumentDetail> {
+  const res = await authFetch(`/documents/${id}`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch document: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function uploadDocument(
+  file: File,
+  subject: string = "General"
+): Promise<DocumentUploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("subject", subject);
+
+  const res = await authFetch("/documents/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Upload failed" }));
+    throw new Error(err.detail || "Document upload failed");
+  }
+
+  return res.json();
+}
+
+// ─── Sessions and Chat API ───────────────────────────────────────────────────
+
+export async function getSessions(documentId?: string): Promise<ChatSession[]> {
+  const url = documentId
+    ? `/sessions?document_id=${encodeURIComponent(documentId)}`
+    : "/sessions";
+  const res = await authFetch(url);
+  if (!res.ok) {
+    throw new Error("Failed to fetch chat sessions");
+  }
+  return res.json();
+}
+
+export async function createSession(documentId: string): Promise<ChatSession> {
+  const res = await authFetch("/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ document_id: documentId }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to create session" }));
+    throw new Error(err.detail || "Failed to create session");
+  }
+
+  return res.json();
+}
+
+export async function getSessionMessages(
+  sessionId: string
+): Promise<ChatMessage[]> {
+  const res = await authFetch(`/sessions/${sessionId}/messages`);
+  if (!res.ok) {
+    throw new Error("Failed to fetch session messages");
+  }
+  const data = await res.json();
+  return (data || []).map((m: any) => ({
+    ...m,
+    id: m.message_id || m.id || `msg-${Math.random()}`,
+    message_id: m.message_id || m.id,
+  }));
+}
+
+
+/**
+ * Consumes the SSE stream from POST /chat/stream.
+ *
+ * Calls:
+ *   onToken(token: string) - as verified tokens arrive
+ *   onDone(citations: CitationItem[]) - when stream finishes
+ *   onError(error: string) - on connection or parsing failure
+ */
+export async function streamChat(
+  sessionId: string,
+  documentId: string,
+  message: string,
+  onToken: (token: string) => void,
+  onDone: (citations: CitationItem[]) => void,
+  onError: (error: string) => void
+): Promise<void> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/chat/stream`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        session_id: sessionId,
+        document_id: documentId,
+        message,
+      }),
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Network error";
+    onError(`Network error connecting to chat stream: ${message}`);
+    return;
+  }
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({ detail: response.statusText }));
+    onError(errData.detail || `Chat request failed with status ${response.status}`);
+    return;
+  }
+
+  if (!response.body) {
+    onError("Response body is not readable");
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      // Keep unfinished last line in buffer
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("data:")) {
+          const jsonStr = trimmed.slice(5).trim();
+          if (!jsonStr) continue;
+
+          try {
+            const eventData = JSON.parse(jsonStr);
+
+            if (eventData.error) {
+              onError(eventData.error);
+            }
+
+            if (eventData.token) {
+              onToken(eventData.token);
+            }
+
+            if (eventData.done) {
+              onDone(eventData.citations || []);
+            }
+          } catch {
+            // Ignore non-JSON or partial lines
+          }
+        }
+      }
+    }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Stream read error";
+    onError(`Stream read error: ${message}`);
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+// ─── Quiz API ────────────────────────────────────────────────────────────────
+
+export async function generateQuiz(
+  documentId: string,
+  topic?: string
+): Promise<QuizDetail> {
+  const res = await authFetch("/quiz/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ document_id: documentId, topic }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Quiz generation failed" }));
+    throw new Error(err.detail || "Quiz generation failed");
+  }
+
+  return res.json();
+}
+
+export async function getQuiz(quizId: string): Promise<QuizDetail> {
+  const res = await authFetch(`/quiz/${quizId}`);
+  if (!res.ok) {
+    throw new Error("Failed to load quiz");
+  }
+  return res.json();
+}
+
+export async function submitQuiz(
+  quizId: string,
+  answers: string[]
+): Promise<QuizSubmissionResult> {
+  const res = await authFetch(`/quiz/${quizId}/submit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answers }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Quiz submission failed" }));
+    throw new Error(err.detail || "Quiz submission failed");
+  }
+
+  return res.json();
+}
+
+export async function getQuizHistory(): Promise<QuizHistoryItem[]> {
+  const res = await authFetch("/quiz/history");
+  if (!res.ok) {
+    throw new Error("Failed to fetch quiz history");
+  }
+  return res.json();
+}
+

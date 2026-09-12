@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     QUIZ_API_KEY: Optional[str] = None
     QUIZ_MODEL: str = "llama-3.1-8b-instant"
 
+    # Day 7 — Google Identity Services Client ID
+    GOOGLE_CLIENT_ID: str = "579242917589-fqs5berd8f4uergvrif5rh9uvge5lrf9.apps.googleusercontent.com"
+
+
 
     @field_validator("UPLOAD_DIR", mode="after")
     @classmethod

@@ -1133,7 +1133,7 @@ unless implementation evidence requires it.
 
 # 15. Implementation Progress & Current Status
 
-## Current Status: DAY 4 COMPLETED & FULLY VERIFIED (180/180 Tests Passing)
+## Current Status: DAY 7 COMPLETED & FULLY VERIFIED (240/240 Tests Passing)
 
 ### IMPLEMENTED (Tested & Verified)
 
@@ -1297,18 +1297,6 @@ unless implementation evidence requires it.
 
 ---
 
-### PLANNED / FUTURE (Do NOT Implement Until Designated Days)
-
-The following features belong strictly to later days and are deliberately NOT implemented yet:
-
-- **Day 7 — Frontend Integration & Streaming**:
-  - Server-Sent Events (SSE) streaming endpoint (`StreamingResponse`).
-  - Next.js frontend integration with modern study workspace UI.
-  - Full Docker compose deployment.
-  - Production JWT authentication replacing the dev-user stub.
-
----
-
 #### Day 6 — Hallucination & Citation Grader + Adaptive Quiz Agent (DAY 6 = IMPLEMENTED AND VERIFIED)
 
 - **Status**: IMPLEMENTED AND VERIFIED (100% test pass rate across 26 dedicated Day-6 tests, full suite 225/225 passing, and manual API verification passed).
@@ -1351,10 +1339,155 @@ The following features belong strictly to later days and are deliberately NOT im
 - Full regression suite: 225/225 passing (2 skipped for live Qdrant container) across all test files.
 - Manual API verification: Passed for all endpoints (`POST /quiz/generate`, `GET /quiz/{quiz_id}`, `POST /quiz/{quiz_id}/submit`, `GET /quiz/history`, `GET /quiz/status`).
 
-##### Deferred Boundaries Strictly Respected
-- No SSE/streaming (Day 7).
-- No Next.js/frontend work (Day 7).
-- No production JWT authentication (Day 7).
-- No new external frameworks (LangGraph, CrewAI, AutoGen).
-- Exactly four agentic components total (no fifth agent added).
+##### Day 6 Boundaries Respected
+- Preserved locked agent count at exactly four (Router, CRAG, Grader, Quiz).
+- Deterministic auto-grading cleanly decoupled from LLM chat generation.
+
+---
+
+#### Day 7 — Next.js Frontend + SSE Streaming + Auth Integration + Full Integration & Testing (DAY 7 = COMPLETED AND VERIFIED)
+
+- **Status**: COMPLETED AND FULLY VERIFIED (100% test pass rate across 240/240 backend regression tests, 14/14 manual E2E test scenarios A–N passing, and Next.js frontend production build passing with 0 errors).
+
+##### Authentication & Authorization Integration
+- **JWT & Bearer Tokens**: Implemented `POST /auth/login`, `GET /auth/me`, and `GET /auth/status`.
+- **Reusable Server-Side Dependency (`get_current_user`)**:
+  - Verifies token integrity and extracts subject user ID.
+  - Development fallback: seamlessly falls back to `"dev-user"` when no Authorization header is provided.
+  - **Never trusts client-supplied `user_id`**: Backend derives authenticated identity exclusively from the token dependency.
+- **Cross-User Isolation**:
+  - Enforced across document upload, document viewing, chat sessions, message streaming, and quiz generation/submission/history.
+  - Mismatched user accesses return HTTP 403 Forbidden.
+  - Qdrant queries enforce payload filters: `user_id == authenticated_user` AND `document_id == selected_document`.
+
+##### Server-Sent Events (SSE) Streaming (`POST /chat/stream`)
+- **FastAPI `StreamingResponse`**: Uses `media_type="text/event-stream"`.
+- **CRITICAL RULE 15 ENFORCED — No Unverified Answers Streamed**:
+  - Unverified RAG answers are NEVER streamed token-by-token.
+  - Full RAG response is generated internally, buffered, and passed to Agent 3 (Hallucination & Citation Grader).
+  - **Grader PASS**: Verified answer streamed to frontend as SSE events (`data: {"token": "..."}\n\n`), ending with `data: {"done": true, "citations": [...]}\n\n`.
+  - **Grader FAIL**: Regenerates answer ONCE using the **SAME retrieved context** (no re-retrieval, no CRAG). Grader re-evaluates.
+  - **Regenerated PASS**: Streamed as verified answer with citations.
+  - **Regenerated FAIL**: Streams standard refusal message (`REFUSAL_MESSAGE`), then `data: {"done": true, "citations": []}\n\n`.
+  - **Maximum regeneration attempts**: Exactly 1. No infinite loops.
+- **Direct Chat & Greetings**: Handled via fast-path / Agent 1 direct chat, streamed without Qdrant vector retrieval.
+
+##### Next.js 16.3.4 Frontend (`frontend/`)
+- Built with TypeScript, React 19, and Tailwind CSS.
+- **Pages**:
+  - `/login`: Clean functional login page supporting custom credentials and one-click Quick Dev Login (`dev-user`).
+  - `/dashboard`: Document metrics cards, processing status badges (`PROCESSING`, `READY`, `FAILED`), and quick-action navigation.
+  - `/documents`: PDF upload form (`multipart/form-data`) + subject, live 3-second auto-polling for documents undergoing background processing.
+  - `/chat`: Document selector, session list/creation, chronological message history, real-time SSE token streaming, citation badges (`[Source N] Page X`), refusal UI, and concurrent request locking.
+  - `/quiz`: Topic input, adaptive quiz generation via Agent 4, multiple choice question options, deterministic auto-grading result display, and quiz attempt history with weak-topic diagnostics (`accuracy < 60%`).
+- **Components & Lib**:
+  - `Navbar.tsx`: Sticky responsive header with branding, 4-agent status, navigation, and user authentication state.
+  - `lib/api.ts`: Centralized API client handling JWT bearer headers, error normalization, and SSE streaming via `ReadableStreamDefaultReader`.
+  - `types/index.ts`: Strict TypeScript interfaces for User, Documents, Sessions, Messages, Citations, and Quizzes.
+
+##### Four Bounded Agents Verification
+- **Agent 1: Query Router & Rewriter** (`app/services/query_router_service.py`)
+- **Agent 2: CRAG Agent** (`app/services/crag_service.py`)
+- **Agent 3: Hallucination & Citation Grader** (`app/services/grader_service.py`)
+- **Agent 4: Adaptive Quiz & Diagnostic Agent** (`app/services/quiz_service.py`)
+- **Strictly No 5th Agent**: No extra agents, planners, or memory agents were created.
+
+##### Testing & Security Verification
+- **Automated Tests**: 240 passed, 0 failed in `backend/tests/` (including 13 dedicated Day 7 tests in `backend/tests/test_day7.py`).
+- **Manual E2E Test Suite (`verify_day7_e2e.py`)**: All 14 scenarios (Tests A through N) passed:
+  - Test A: Login (PASS)
+  - Test B: Document Upload (PASS)
+  - Test C: Document List (PASS)
+  - Test D: Normal RAG SSE (PASS)
+  - Test E: Follow-up Pronoun Rewrite (PASS)
+  - Test F: Greeting / Direct Chat (PASS)
+  - Test G: Weak Retrieval + CRAG Refusal (PASS)
+  - Test H: Grader Regeneration Fail -> Pass (PASS)
+  - Test I: Grader Double Failure -> Refusal (PASS)
+  - Test J: Quiz Generation (PASS)
+  - Test K: Deterministic Quiz Grading (PASS)
+  - Test L: Quiz History & Weak Topics (PASS)
+  - Test M: Security & Cross-User Isolation (PASS)
+  - Test N: SSE Protocol Integrity (PASS)
+##### Day 7 Final Authentication, Weak Topic & UI Enhancements
+- **Google Sign-In with Google Identity Services (GIS)**:
+  - Frontend loads official GIS script and renders official button with `Continue with Google`.
+  - Backend verifies ID token cryptographically via `verify_google_token` (`POST /auth/google`).
+  - Derives stable `user_id = f"google_{sub}"` (Google `sub` claim — never email as primary ID).
+  - Persists `User` entity to PostgreSQL `users` table and issues application Bearer token.
+  - Client-side route protection via `useAuth(true)` redirects unauthenticated users to `/login`.
+  - Navbar dynamically reflects authenticated user profile and provides "Sign Out".
+- **React Key Warning Elimination**:
+  - Identified root cause in `src/app/chat/page.tsx`: backend `MessageResponse` returned `message_id`, causing `msg.id` to be undefined and falling back to non-unique index keys.
+  - Normalized `id` in `getSessionMessages` and updated `ChatMessage` type with `message_id`.
+  - Deduplicated `sessions` and `documents` to guarantee unique IDs.
+  - Applied stable `parent_chunk_id` for citation elements.
+- **Clean Citation Presentation**:
+  - Normalized citations in `src/app/chat/page.tsx` to display `[Source N] <filename> · Page <page_num>` without redundant `"Source"` prefixes (preventing `[Source Source 1]`).
+- **Complete Actionable Weak Topic Behavior**:
+  - Diagnostic threshold: `< 60% = Weak`, `>= 60% = Mastered / Not Weak`.
+  - Updated `detect_weak_topics` to evaluate latest attempt result per topic.
+  - Quiz completion card displays actionable diagnostic alert and `[Practice Weak Topic]` button when accuracy `< 60%`.
+  - Quiz History table includes actionable `[Practice Weak Topic]` button for all weak topics.
+  - Targeted weak-topic practice routes directly to existing Agent 4 with user + document filtering.
+- **Dashboard Weak Topics Section**:
+  - Added dedicated "Weak Topics" section to `/dashboard` displaying weak topics, accuracy percentage, and a `[Practice]` button linking to the targeted quiz.
+  - Displays `"No weak topics detected."` when all topics are $\ge 60\%$.
+- **Document Date Display**:
+  - Added `created_at` field to `DocumentSummary` Pydantic schema and `document_to_summary` mapping function so existing database upload timestamps are properly serialized and rendered instead of `—`.
+- **Architecture Integrity**:
+  - Maintained exactly 4 bounded agents (Router, CRAG, Grader, Quiz).
+  - Preserved all locked RAG rules and deterministic grading logic.
+
+---
+
+## Day 7 — Final UX / Auth / Theme Polish (implemented 2026-09-12)
+
+### Root Causes Fixed
+
+- **"Rendering…" indefinite spinner** — `useAuth` called `setLoading(false)` only when a token existed, but not in the `requireAuth && !token` redirect path. Pages that consumed `loading` were therefore stuck. Fix: `useAuth` now uses a `checked` ref to run the check exactly once and always resolves `loading` to `false` in non-redirect paths. Also added an explicit 8-second GIS timeout on the login page so "Loading Google Sign-In…" never hangs forever.
+- **React key warning in Chat** — `<button key={sess.id}>` used `sess.id` but the `ChatSession` object has `session_id`. Fixed to use `sess.session_id || sess.id`.
+- **Data fetch racing auth redirect** — Dashboard, Documents, Chat, and Quiz pages all started API calls on mount regardless of auth state. If `useAuth` was redirecting the user to `/login`, the API calls still fired (returning 401). Fixed by gating all initial data fetches with `if (authLoading) return` in `useEffect`.
+- **Hydration mismatch on Navbar** — Auth state and theme are localStorage-based (client-only), but Navbar rendered on server with no auth. Fixed with a `mounted` state gate so the auth section renders only after client mount.
+- **Theme flash on hard reload** — No theme was applied before React hydrated. Fixed by injecting an inline `<script>` in `layout.tsx` that reads localStorage and applies `data-theme` + `.dark` class synchronously, before the first paint.
+
+### Files Changed
+
+| File | Change |
+|---|---|
+| `frontend/hooks/useAuth.ts` | Fixed indefinite loading; uses `checked` ref; all paths resolve `loading=false` |
+| `frontend/hooks/useTheme.ts` | **New** — Light/Dark/Green theme hook with localStorage persistence |
+| `frontend/src/app/globals.css` | **Rewritten** — Full CSS custom property system for all 3 themes |
+| `frontend/src/app/layout.tsx` | Added inline theme-init script; `suppressHydrationWarning`; removed hardcoded Tailwind bg/text classes |
+| `frontend/components/Navbar.tsx` | **Rewritten** — removed "4 Agents" pill, removed "Student" role label, added Light/Dark/Green theme picker dropdown, hydration-safe auth state, clean display name |
+| `frontend/src/app/page.tsx` | **Rewritten** — removed "Day 7 — Locked 4-Agent Architecture" badge; removed "Agent 1/2/3/4" labels |
+| `frontend/src/app/login/page.tsx` | **Rewritten** — 8-second GIS timeout; renamed dev button to "Continue as Guest"; `router.replace` instead of `router.push` |
+| `frontend/src/app/dashboard/page.tsx` | Auth-gated fetch; full-page loading spinner; CSS vars throughout; removed internal pipeline description |
+| `frontend/src/app/documents/page.tsx` | Auth-gated fetch; auth spinner; CSS vars; clean description text |
+| `frontend/src/app/chat/page.tsx` | Fixed React key (session_id); auth-gated fetch; removed "4-Agent verified answers" subtitle; CSS vars |
+| `frontend/src/app/quiz/page.tsx` | Removed "Agent 4 retrieves…" subtitle; auth-gated fetch; auth spinner; CSS vars |
+| `frontend/next.config.ts` | Disabled `devIndicators` overlay (`devIndicators: false`) |
+
+### Theme System
+
+- 3 themes: `light`, `dark`, `green`
+- Stored in `localStorage` under key `app-theme`
+- Applied via `data-theme` attribute on `<html>` element
+- Tailwind `dark:` utilities active when `data-theme="dark"` or `data-theme="green"` (`.dark` class added)
+- Inline script in `layout.tsx` prevents theme flash on hard reload
+- Theme persists across tabs and page reloads
+
+### Security Maintained
+
+- Google `sub` still used as stable user identity (never email)
+- Google ID token verified server-side in FastAPI (`/auth/google`)
+- Frontend never trusts Google token directly; only stores app JWT
+- JWT derived from `user_id`; never from browser-supplied body fields
+- `router.replace` used on login/redirect to prevent back-button auth bypass
+
+### Architecture Unchanged
+
+- Exactly 4 agents: Router/Rewriter, CRAG, Grader, Quiz
+- RAG pipeline untouched
+- No new dependencies added
 

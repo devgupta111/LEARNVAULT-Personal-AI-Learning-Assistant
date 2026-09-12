@@ -11,14 +11,17 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.base import Base
 from app.db.database import engine
+from app.api.auth import router as auth_router  # Day 7
 from app.api.documents import router as documents_router
 from app.api.chat import router as chat_router
 from app.api.quiz import router as quiz_router  # Day 6
 # Import all models so Base.metadata.create_all() creates every table
-from app.models import Document, Session, Message, Quiz, QuizAttempt  # noqa: F401
+from app.models import Document, Session, Message, Quiz, QuizAttempt, User  # noqa: F401
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -54,13 +57,24 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Personal AI Learning Assistant",
     description="Backend API for the RAG-based study assistant.",
-    version="1.0.0-day6",
+    version="1.0.0-day7",
     lifespan=lifespan,
 )
 
+# Enable CORS for Next.js frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth_router)       # Day 7: /auth/login, /auth/me, /auth/status
 app.include_router(documents_router)
-app.include_router(chat_router)  # includes /chat, /sessions, /sessions/{id}/messages
-app.include_router(quiz_router)  # Day 6: /quiz/generate, /quiz/{id}, /quiz/{id}/submit, /quiz/history
+app.include_router(chat_router)       # includes /chat, /chat/stream, /sessions, /sessions/{id}/messages
+app.include_router(quiz_router)       # Day 6: /quiz/generate, /quiz/{id}, /quiz/{id}/submit, /quiz/history
+
 
 
 @app.get("/health", tags=["Health"])

@@ -24,3 +24,7 @@ groq>=0.9.0           # Groq Python SDK — Router agent, CRAG agent, generation
 
 # Day 4 — cross-encoder reranking (local, no API key)
 flashrank>=0.2.0
+
+# Day 7 — Google Identity Services verification
+google-auth>=2.0.0
+

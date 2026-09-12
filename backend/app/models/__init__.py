@@ -4,5 +4,7 @@ from app.models.session import Session
 from app.models.message import Message
 from app.models.quiz import Quiz
 from app.models.quiz_attempt import QuizAttempt
+from app.models.user import User
 
-__all__ = ["Document", "Session", "Message", "Quiz", "QuizAttempt"]
+__all__ = ["Document", "Session", "Message", "Quiz", "QuizAttempt", "User"]
+

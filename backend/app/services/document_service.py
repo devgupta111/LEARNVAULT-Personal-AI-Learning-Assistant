@@ -32,6 +32,17 @@ def get_all_documents(db: Session) -> List[Document]:
     )
 
 
+def get_documents_by_user(db: Session, user_id: str) -> List[Document]:
+    """Return all documents belonging to a specific user, newest first."""
+    return (
+        db.query(Document)
+        .filter(Document.user_id == user_id)
+        .order_by(Document.created_at.desc())
+        .all()
+    )
+
+
+
 def update_document_status(
     db: Session,
     document_id: str,
@@ -73,7 +84,9 @@ def document_to_summary(doc: Document) -> DocumentSummary:
         subject=doc.subject,
         status=doc.status,
         page_count=doc.page_count,
+        created_at=doc.created_at,
     )
+
 
 
 def document_to_detail(doc: Document) -> DocumentDetail:

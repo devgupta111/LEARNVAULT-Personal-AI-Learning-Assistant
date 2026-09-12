@@ -37,6 +37,11 @@ data/test_documents/*
 data/processed/*
 !data/processed/.gitkeep
 
+# Root-level scratch scripts and one-off test helpers (never commit these)
+scratch/*
+!scratch/.gitkeep
+tests/*
+!tests/.gitkeep
 
 # Python
 __pycache__/
