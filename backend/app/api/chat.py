@@ -70,6 +70,7 @@ from app.schemas.chat_schemas import (
     CitationItem,
     CreateSessionRequest,
     MessageResponse,
+    RenameSessionRequest,
     SessionResponse,
 )
 from app.services.reranker_service import search_and_rerank
@@ -206,6 +207,7 @@ def create_session(
         session_id=session.id,
         document_id=session.document_id,
         created_at=session.created_at.isoformat() if session.created_at else "",
+        title=session.title,
     )
 
 
@@ -231,6 +233,7 @@ def list_sessions(
             session_id=s.id,
             document_id=s.document_id,
             created_at=s.created_at.isoformat() if s.created_at else "",
+            title=s.title,
         )
         for s in sessions
     ]
@@ -290,7 +293,125 @@ def list_messages(
     return result
 
 
+@router.delete("/sessions/{session_id}", status_code=200)
+def delete_session(
+    session_id: str,
+    current_user: str = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+) -> dict:
+    """
+    DELETE /sessions/{session_id} — Permanently delete a chat session.
+
+    Deletion order (no ORM cascade configured on messages):
+      1. Verify authenticated ownership.
+      2. Delete all messages in the session.
+      3. Delete the session row.
+
+    Security:
+      - user_id derived from get_current_user() — never trusted from the request.
+      - Returns 403 if the session belongs to a different user.
+      - Returns 404 if the session does not exist.
+    """
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session '{session_id}' not found.",
+        )
+    if session.user_id != current_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to delete this session.",
+        )
+
+    # Delete messages first (no ORM cascade configured)
+    deleted_messages = (
+        db.query(Message)
+        .filter(Message.session_id == session_id)
+        .delete(synchronize_session="fetch")
+    )
+
+    # Delete session row
+    db.delete(session)
+    db.commit()
+
+    logger.info(
+        "Session %s deleted by user %s (%d messages removed)",
+        session_id,
+        current_user,
+        deleted_messages,
+    )
+
+    return {"deleted": True, "session_id": session_id}
+
+
+@router.put("/chat/sessions/{session_id}", response_model=SessionResponse, status_code=status.HTTP_200_OK)
+@router.put("/sessions/{session_id}", response_model=SessionResponse, status_code=status.HTTP_200_OK)
+def rename_session(
+    session_id: str,
+    request: RenameSessionRequest,
+    current_user: str = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """
+    PUT /chat/sessions/{session_id} — Rename a chat session.
+
+    Validation:
+      - title must be non-empty after strip.
+      - title max length: 255 characters.
+
+    Security:
+      - user_id derived from get_current_user() — never trusted from request.
+      - Returns 403 if the session belongs to a different user.
+      - Returns 404 if the session does not exist.
+    """
+    clean_title = request.title.strip()
+    if not clean_title:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Session title cannot be empty.",
+        )
+    if len(clean_title) > 255:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Session title is too long ({len(clean_title)} characters). Maximum is 255.",
+        )
+
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session '{session_id}' not found.",
+        )
+    if session.user_id != current_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to rename this session.",
+        )
+
+    old_title = session.title
+    session.title = clean_title
+    db.commit()
+    db.refresh(session)
+
+    logger.info(
+        "Session %s renamed by user %s: '%s' -> '%s'",
+        session_id,
+        current_user,
+        old_title,
+        clean_title,
+    )
+
+    return SessionResponse(
+        session_id=session.id,
+        document_id=session.document_id,
+        created_at=session.created_at.isoformat() if session.created_at else "",
+        title=session.title,
+    )
+
+
 # ─── Verified RAG generation integrating Agents 1, 2, and 3 ────────────────────
+
 
 def _generate_verified_answer(
     session_id: str,

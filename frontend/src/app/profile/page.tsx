@@ -34,7 +34,6 @@ export default function ProfilePage() {
   const router = useRouter();
 
   const [profile, setProfile] = useState<User | null>(initialUser);
-  const [fetching, setFetching] = useState(false);
 
   // Edit Profile mode state
   const [isEditing, setIsEditing] = useState(false);
@@ -50,7 +49,6 @@ export default function ProfilePage() {
 
     async function loadProfile() {
       try {
-        setFetching(true);
         const data = await getMe();
         if (isMounted) {
           setProfile(data);
@@ -61,8 +59,6 @@ export default function ProfilePage() {
         if (isMounted && initialUser) {
           setEditName(initialUser.username || "");
         }
-      } finally {
-        if (isMounted) setFetching(false);
       }
     }
 
@@ -162,14 +158,8 @@ export default function ProfilePage() {
       <div className="mb-6">
         <Link
           href="/dashboard"
-          className="inline-flex items-center gap-2 text-xs font-medium transition-colors"
+          className="inline-flex items-center gap-2 text-xs font-medium transition-all hover:text-[var(--text-primary)] active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none rounded-lg px-2 py-1"
           style={{ color: "var(--text-muted)" }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
-          }}
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -238,7 +228,7 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={startEditing}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-white transition-all shadow-sm"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-white transition-all shadow-sm active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
                 style={{ background: "var(--accent)" }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLElement).style.background = "var(--accent-hover)";
@@ -254,7 +244,7 @@ export default function ProfilePage() {
             <button
               type="button"
               onClick={handleLogout}
-              className="px-4 py-2 rounded-xl text-xs font-medium transition-colors border"
+              className="px-4 py-2 rounded-xl text-xs font-medium transition-all border active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
               style={{
                 background: "var(--bg-surface-2)",
                 color: "var(--text-secondary)",
@@ -389,7 +379,7 @@ export default function ProfilePage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-5 py-2.5 rounded-xl text-xs font-semibold text-white transition-all shadow-sm disabled:opacity-50 flex items-center gap-2"
+                  className="px-5 py-2.5 rounded-xl text-xs font-semibold text-white transition-all shadow-sm disabled:opacity-50 flex items-center gap-2 active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
                   style={{ background: "var(--accent)" }}
                   onMouseEnter={(e) => {
                     (e.currentTarget as HTMLElement).style.background = "var(--accent-hover)";
@@ -412,7 +402,7 @@ export default function ProfilePage() {
                   type="button"
                   onClick={cancelEditing}
                   disabled={saving}
-                  className="px-4 py-2.5 rounded-xl text-xs font-medium transition-colors border"
+                  className="px-4 py-2.5 rounded-xl text-xs font-medium transition-all border active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
                   style={{
                     background: "var(--bg-surface-2)",
                     color: "var(--text-secondary)",

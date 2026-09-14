@@ -18,16 +18,20 @@
 
 "use client";
 
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, Suspense } from "react";
 import { useAuth } from "../../../hooks/useAuth";
 import {
   createSession,
+  deleteSession,
   getDocuments,
   getSessionMessages,
   getSessions,
+  renameSession,
   streamChat,
 } from "../../../lib/api";
+import { useToast } from "../../../components/Toast";
 import { ChatMessage, ChatSession, CitationItem, DocumentSummary } from "../../../types";
 
 function ChatComponent() {
@@ -45,6 +49,11 @@ function ChatComponent() {
   const [streamingTokenText, setStreamingTokenText] = useState("");
   const [loadingDocs, setLoadingDocs] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -80,7 +89,6 @@ function ChatComponent() {
       }
     }
     loadInitial();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, initialDocId]);
 
   // Load sessions when selected document changes
@@ -147,14 +155,83 @@ function ChatComponent() {
     }
   };
 
+  const handleDeleteSession = async (sessId: string) => {
+    const confirmed = window.confirm(
+      "Delete this conversation?\n\nAll messages in this session will be permanently removed."
+    );
+    if (!confirmed) return;
+    setDeletingSessionId(sessId);
+    setError(null);
+    try {
+      await deleteSession(sessId);
+      setSessions((prev) => {
+        const remaining = prev.filter((s) => (s.session_id || s.id) !== sessId);
+        // If the deleted session was active, switch to first remaining or clear
+        if (sessId === activeSessionId) {
+          const nextId = remaining.length > 0 ? (remaining[0].session_id || remaining[0].id || "") : "";
+          setActiveSessionId(nextId);
+          setMessages([]);
+        }
+        return remaining;
+      });
+      toast.success("Chat session deleted successfully.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to delete session";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setDeletingSessionId(null);
+    }
+  };
+
+  const handleRenameSession = async (sessId: string) => {
+    const clean = editingTitle.trim();
+    if (!clean) {
+      toast.error("Session title cannot be empty.");
+      return;
+    }
+    if (clean.length > 255) {
+      toast.error("Session title is too long (maximum is 255 characters).");
+      return;
+    }
+    setRenaming(true);
+    try {
+      const updated = await renameSession(sessId, clean);
+      setSessions((prev) =>
+        prev.map((s) => ((s.session_id || s.id) === sessId ? { ...s, title: updated.title } : s))
+      );
+      setEditingSessionId(null);
+      toast.success("Chat session renamed successfully.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to rename session";
+      toast.error(msg);
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanMessage = inputMessage.trim();
-    if (!cleanMessage || isStreaming || !activeSessionId || !selectedDocId) return;
+    if (!cleanMessage || isStreaming || !selectedDocId) return;
+
+    let currentSessId = activeSessionId;
+    if (!currentSessId) {
+      try {
+        const newSess = await createSession(selectedDocId);
+        currentSessId = newSess.session_id || newSess.id || "";
+        setSessions([newSess]);
+        setActiveSessionId(currentSessId);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Failed to create session";
+        setError(msg);
+        return;
+      }
+    }
 
     const userMsg: ChatMessage = {
       id: `temp-user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      session_id: activeSessionId,
+      session_id: currentSessId,
       sender: "user",
       content: cleanMessage,
       citations: [],
@@ -170,7 +247,7 @@ function ChatComponent() {
     let accumulated = "";
 
     await streamChat(
-      activeSessionId,
+      currentSessId,
       selectedDocId,
       cleanMessage,
       (token: string) => {
@@ -180,7 +257,7 @@ function ChatComponent() {
       (citations: CitationItem[]) => {
         const assistantMsg: ChatMessage = {
           id: `temp-ast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          session_id: activeSessionId,
+          session_id: currentSessId,
           sender: "assistant",
           content: accumulated,
           citations,
@@ -242,10 +319,17 @@ function ChatComponent() {
             </div>
           ) : uniqueDocuments.length === 0 ? (
             <div
-              className="text-xs p-2 border border-dashed rounded-lg"
+              className="text-xs p-3 border border-dashed rounded-xl flex flex-col gap-1.5"
               style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
             >
-              No ready documents. Upload a PDF first.
+              <span>No ready documents found.</span>
+              <Link
+                href="/documents"
+                className="inline-flex items-center gap-1 font-semibold text-xs transition-colors hover:underline"
+                style={{ color: "var(--accent)" }}
+              >
+                Upload a PDF →
+              </Link>
             </div>
           ) : (
             <select
@@ -274,7 +358,7 @@ function ChatComponent() {
         <button
           onClick={handleCreateNewSession}
           disabled={!selectedDocId || isStreaming}
-          className="w-full py-2 px-3 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-2 mb-4 disabled:opacity-50"
+          className="w-full py-2 px-3 rounded-lg text-xs font-semibold transition-all hover:brightness-95 active:scale-[0.99] flex items-center justify-center gap-2 mb-4 disabled:opacity-50 focus-visible:ring-2 focus-visible:outline-none"
           style={{
             background: "var(--accent-surface)",
             color: "var(--accent-text)",
@@ -293,26 +377,125 @@ function ChatComponent() {
             Conversations ({uniqueSessions.length})
           </span>
           {uniqueSessions.map((sess, idx) => {
-            // Fix: use session_id (not sess.id) as the React key
             const sessId = sess.session_id || sess.id || `sess-${idx}`;
             const isActive = sessId === activeSessionId;
+            const isDeleting = deletingSessionId === sessId;
+            const displayTitle = sess.title || `Session #${uniqueSessions.length - idx}`;
             return (
-              <button
+              <div
                 key={sessId}
-                onClick={() => setActiveSessionId(sessId)}
-                disabled={isStreaming}
-                className="w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-colors"
+                className="group flex items-center gap-1 rounded-lg transition-colors"
                 style={
                   isActive
-                    ? { background: "var(--bg-surface-2)", color: "var(--text-primary)" }
-                    : { color: "var(--text-secondary)" }
+                    ? { background: "var(--bg-surface-2)" }
+                    : {}
                 }
               >
-                <div className="truncate">Session #{uniqueSessions.length - idx}</div>
-                <div className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-                  {sess.created_at ? new Date(sess.created_at).toLocaleDateString() : ""}
-                </div>
-              </button>
+                {editingSessionId === sessId ? (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleRenameSession(sessId);
+                    }}
+                    className="flex-1 flex items-center gap-1 px-1 py-1"
+                  >
+                    <input
+                      autoFocus
+                      type="text"
+                      value={editingTitle}
+                      onChange={(e) => setEditingTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") setEditingSessionId(null);
+                      }}
+                      disabled={renaming}
+                      maxLength={255}
+                      className="w-full px-2 py-1 rounded text-xs border focus:outline-none focus:ring-1"
+                      style={{
+                        background: "var(--bg-surface)",
+                        borderColor: "var(--accent)",
+                        color: "var(--text-primary)",
+                      }}
+                      placeholder="Session title…"
+                    />
+                    <button
+                      type="submit"
+                      disabled={renaming || !editingTitle.trim()}
+                      title="Save title"
+                      aria-label="Save title"
+                      className="p-1 rounded text-emerald-600 dark:text-emerald-400 hover:bg-[var(--bg-hover)] disabled:opacity-50 focus-visible:ring-2 focus-visible:outline-none"
+                    >
+                      {renaming ? (
+                        <span className="w-3 h-3 border border-t-transparent rounded-full animate-spin inline-block" />
+                      ) : (
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingSessionId(null)}
+                      disabled={renaming}
+                      title="Cancel"
+                      aria-label="Cancel rename"
+                      className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] focus-visible:ring-2 focus-visible:outline-none"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </form>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setActiveSessionId(sessId)}
+                      disabled={isStreaming || isDeleting}
+                      className="flex-1 text-left px-3 py-2 text-xs font-medium transition-all hover:bg-[var(--bg-hover)] active:scale-[0.99] rounded-lg focus-visible:ring-2 focus-visible:outline-none truncate"
+                      style={{ color: isActive ? "var(--text-primary)" : "var(--text-secondary)" }}
+                    >
+                      <div className="truncate font-medium">{displayTitle}</div>
+                      <div className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                        {sess.created_at ? new Date(sess.created_at).toLocaleDateString() : ""}
+                      </div>
+                    </button>
+                    <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity mr-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingSessionId(sessId);
+                          setEditingTitle(displayTitle);
+                        }}
+                        disabled={isStreaming || isDeleting}
+                        title="Rename session"
+                        aria-label="Rename session"
+                        className="p-1.5 rounded-lg transition-all text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a2 2 0 01-1.414.586H8v-2.414a2 2 0 01.586-1.414z" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSession(sessId)}
+                        disabled={isStreaming || isDeleting}
+                        title="Delete session"
+                        aria-label="Delete session"
+                        className="p-1.5 rounded-lg transition-all disabled:opacity-50 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:text-rose-600 dark:hover:text-rose-400 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:outline-none"
+                        style={{ color: "#f43f5e" }}
+                      >
+                        {isDeleting ? (
+                          <span className="w-3 h-3 border border-t-transparent rounded-full animate-spin inline-block" style={{ borderColor: "#f43f5e", borderTopColor: "transparent" }} />
+                        ) : (
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             );
           })}
         </div>
@@ -335,6 +518,9 @@ function ChatComponent() {
               {selectedDoc && (
                 <span className="text-xs font-normal" style={{ color: "var(--text-muted)" }}>
                   — {selectedDoc.filename}
+                  {uniqueSessions.find((s) => (s.session_id || s.id) === activeSessionId)?.title
+                    ? ` (${uniqueSessions.find((s) => (s.session_id || s.id) === activeSessionId)?.title})`
+                    : ""}
                 </span>
               )}
             </h2>
@@ -361,7 +547,29 @@ function ChatComponent() {
             </div>
           )}
 
-          {messages.length === 0 && !isStreaming && (
+          {uniqueDocuments.length === 0 ? (
+            <div className="py-20 text-center text-xs" style={{ color: "var(--text-muted)" }}>
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3 text-xl shadow-xs"
+                style={{ background: "var(--accent-surface)", color: "var(--accent-text)" }}
+              >
+                📚
+              </div>
+              <p className="font-semibold text-sm mb-1.5" style={{ color: "var(--text-primary)" }}>
+                No study documents ready yet
+              </p>
+              <p className="max-w-xs mx-auto mb-5 leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                Upload a lecture note, textbook, or PDF to start a grounded conversation with verified citations.
+              </p>
+              <Link
+                href="/documents"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white shadow-sm transition-all hover:brightness-105 active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
+                style={{ background: "var(--accent)" }}
+              >
+                <span>Upload a Document →</span>
+              </Link>
+            </div>
+          ) : messages.length === 0 && !isStreaming ? (
             <div className="py-20 text-center text-xs" style={{ color: "var(--text-muted)" }}>
               <div
                 className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2 text-base"
@@ -376,7 +584,7 @@ function ChatComponent() {
                 Try: &quot;What is database normalization?&quot; or &quot;Explain the main concepts in chapter 1&quot;
               </p>
             </div>
-          )}
+          ) : null}
 
           {messages.map((msg, msgIdx) => {
             const msgKey = msg.message_id || msg.id || `msg-${msgIdx}`;
@@ -417,7 +625,9 @@ function ChatComponent() {
                             ? `cit-${msgKey}-${c.parent_chunk_id}`
                             : `cit-${msgKey}-${i}-${c.page_start ?? 0}`;
                           const cleanSourceNum = String(c.source_id ?? (i + 1))
+                            .replace(/^\[?source\s*/i, "")
                             .replace(/^source\s*/i, "")
+                            .replace(/\]$/, "")
                             .trim();
                           const matchedDoc =
                             uniqueDocuments.find((d) => (d.document_id || d.id) === c.document_id) ||
@@ -471,6 +681,33 @@ function ChatComponent() {
             </div>
           )}
 
+          {/* "Quiz from this Chat" shortcut */}
+          {messages.length > 0 && !isStreaming && selectedDocId && (
+            <div className="pt-3 pb-1 flex justify-center page-enter">
+              <Link
+                href={
+                  uniqueSessions.find((s) => (s.session_id || s.id) === activeSessionId)?.title
+                    ? `/quiz?doc=${selectedDocId}&topic=${encodeURIComponent(
+                        uniqueSessions.find((s) => (s.session_id || s.id) === activeSessionId)!.title!
+                      )}`
+                    : selectedDoc?.subject && selectedDoc.subject !== "General"
+                    ? `/quiz?doc=${selectedDocId}&topic=${encodeURIComponent(selectedDoc.subject)}`
+                    : `/quiz?doc=${selectedDocId}`
+                }
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border shadow-xs transition-all hover:brightness-105 active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
+                style={{
+                  background: "var(--accent-surface)",
+                  borderColor: "var(--accent-border)",
+                  color: "var(--accent-text)",
+                }}
+              >
+                <span>🎯</span>
+                <span>Test yourself on this topic</span>
+                <span>→</span>
+              </Link>
+            </div>
+          )}
+
           <div ref={messagesEndRef} />
         </div>
 
@@ -505,7 +742,7 @@ function ChatComponent() {
           <button
             type="submit"
             disabled={isStreaming || !inputMessage.trim() || !selectedDocId}
-            className="px-5 py-2.5 rounded-xl text-white font-medium text-xs sm:text-sm transition-colors shadow-sm disabled:opacity-40 shrink-0"
+            className="px-5 py-2.5 rounded-xl text-white font-medium text-xs sm:text-sm transition-all hover:brightness-105 active:scale-[0.98] shadow-sm disabled:opacity-40 shrink-0 focus-visible:ring-2 focus-visible:outline-none"
             style={{ background: "var(--accent)" }}
           >
             Send

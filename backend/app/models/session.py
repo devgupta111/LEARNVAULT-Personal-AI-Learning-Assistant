@@ -37,6 +37,9 @@ class Session(Base):
     # Every chat message in this session queries only this document's vectors.
     document_id = Column(String(36), nullable=False)
 
+    # Optional custom title for the session (renamed by user)
+    title = Column(String(255), nullable=True)
+
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.datetime.now(datetime.timezone.utc),

@@ -362,12 +362,69 @@ def quiz_status():
     }
 
 
+@router.patch("/{quiz_id}/rename", status_code=200)
+def rename_quiz_topic(
+    quiz_id: str,
+    body: dict,
+    current_user: str = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+) -> dict:
+    """
+    PATCH /quiz/{quiz_id}/rename — Rename the topic of a quiz.
+
+    Body: { "topic": "<new topic string>" }
+
+    Validation:
+      - topic must be non-empty after strip.
+      - topic max length: 255 characters.
+
+    Security:
+      - user_id derived from get_current_user() — never trusted from the request.
+      - Returns 403 if the quiz belongs to a different user.
+      - Returns 404 if the quiz does not exist.
+
+    No quiz history or attempts are deleted — rename is a metadata-only operation.
+    """
+    new_topic: str = body.get("topic", "").strip()
+    if not new_topic:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Topic cannot be empty.",
+        )
+    if len(new_topic) > 255:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Topic is too long ({len(new_topic)} characters). Maximum is 255.",
+        )
+
+    quiz = _get_quiz_or_raise(quiz_id, current_user, db)
+    old_topic = quiz.topic
+    quiz.topic = new_topic
+    db.commit()
+    db.refresh(quiz)
+
+    logger.info(
+        "Quiz %s topic renamed by user %s: '%s' -> '%s'",
+        quiz_id,
+        current_user,
+        old_topic,
+        new_topic,
+    )
+
+    return {
+        "quiz_id": quiz_id,
+        "topic": quiz.topic,
+        "renamed": True,
+    }
+
+
 @router.get("/{quiz_id}", response_model=QuizResponse)
 def get_quiz(
     quiz_id: str,
     current_user: str = Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
+
     """
     GET /quiz/{quiz_id} — Retrieve a specific quiz.
 

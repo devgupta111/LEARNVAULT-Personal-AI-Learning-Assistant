@@ -14,12 +14,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getToken } from "../../lib/api";
+import UserGuideModal from "../../components/UserGuideModal";
 
 export default function Home() {
   const router = useRouter();
+  const [showGuide, setShowGuide] = useState(false);
 
   // Redirect authenticated user to /dashboard immediately
   useEffect(() => {
@@ -52,21 +54,40 @@ export default function Home() {
       </p>
 
       {/* CTA buttons */}
-      <div className="flex flex-wrap items-center justify-center gap-4 mb-16">
-        {[
-          { href: "/dashboard", label: "Open Study Dashboard" },
-          { href: "/documents", label: "Upload Notes (PDF)" },
-          { href: "/chat", label: "Ask a Question" },
-          { href: "/quiz", label: "Practice Quiz" },
-        ].map((btn) => (
-          <Link
-            key={btn.href}
-            href={btn.href}
-            className="hero-cta-btn px-6 py-3 rounded-xl font-semibold text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-          >
-            {btn.label}
-          </Link>
-        ))}
+      <div className="flex flex-wrap items-center justify-center gap-3.5 mb-16">
+        <Link
+          href="/login"
+          className="px-6 py-3 rounded-xl font-semibold text-sm text-white shadow-md transition-all hover:brightness-105 active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
+          style={{ background: "var(--accent)" }}
+        >
+          Get Started →
+        </Link>
+        <button
+          type="button"
+          onClick={() => setShowGuide(true)}
+          className="hero-cta-btn px-6 py-3 rounded-xl font-semibold text-sm shadow-sm transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none flex items-center gap-2 cursor-pointer"
+        >
+          <span>📖</span>
+          <span>Read User Guide</span>
+        </button>
+        <Link
+          href="/documents"
+          className="hero-cta-btn px-5 py-3 rounded-xl font-semibold text-sm shadow-sm transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
+        >
+          Upload Notes
+        </Link>
+        <Link
+          href="/chat"
+          className="hero-cta-btn px-5 py-3 rounded-xl font-semibold text-sm shadow-sm transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
+        >
+          Ask Questions
+        </Link>
+        <Link
+          href="/quiz"
+          className="hero-cta-btn px-5 py-3 rounded-xl font-semibold text-sm shadow-sm transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
+        >
+          Practice Quiz
+        </Link>
       </div>
 
       {/* Feature cards */}
@@ -119,6 +140,9 @@ export default function Home() {
           </div>
         ))}
       </div>
+
+      {/* User Guide Modal for unauthenticated visitors */}
+      {showGuide && <UserGuideModal onClose={() => setShowGuide(false)} />}
     </main>
   );
 }

@@ -18,15 +18,18 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "../../../hooks/useAuth";
-import { getDocuments, getQuizHistory } from "../../../lib/api";
+import { useToast } from "../../../components/Toast";
+import { deleteDocument, getDocuments, getQuizHistory } from "../../../lib/api";
 import { DocumentSummary, QuizHistoryItem } from "../../../types";
 
 export default function DashboardPage() {
   const { loading: authLoading } = useAuth(true);
+  const toast = useToast();
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [quizHistory, setQuizHistory] = useState<QuizHistoryItem[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
 
   const fetchData = async () => {
     try {
@@ -51,8 +54,27 @@ export default function DashboardPage() {
     if (!authLoading) {
       fetchData();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading]);
+
+  const handleDeleteDocument = async (docId: string, filename: string) => {
+    const confirmed = window.confirm(
+      `Delete "${filename}"?\n\nThis will permanently remove the document, all chat sessions, messages, quizzes, and quiz attempts linked to it.\n\nThis action cannot be undone.`
+    );
+    if (!confirmed) return;
+    setDeletingDocId(docId);
+    setError(null);
+    try {
+      await deleteDocument(docId);
+      setDocuments((prev) => prev.filter((d) => (d.document_id || d.id) !== docId));
+      toast.success("Document deleted successfully.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to delete document";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setDeletingDocId(null);
+    }
+  };
 
   const loading = authLoading || dataLoading;
 
@@ -107,7 +129,7 @@ export default function DashboardPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={fetchData}
-            className="px-3.5 py-2 text-xs font-medium rounded-lg transition-colors"
+            className="px-3.5 py-2 text-xs font-medium rounded-lg transition-all hover:bg-[var(--bg-hover)] active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
             style={{
               background: "var(--bg-surface)",
               color: "var(--text-secondary)",
@@ -118,7 +140,7 @@ export default function DashboardPage() {
           </button>
           <Link
             href="/documents"
-            className="px-4 py-2 text-xs font-medium rounded-lg text-white shadow-sm transition-colors"
+            className="px-4 py-2 text-xs font-medium rounded-lg text-white shadow-sm transition-all hover:brightness-105 active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
             style={{ background: "var(--accent)" }}
           >
             + Upload PDF
@@ -166,9 +188,14 @@ export default function DashboardPage() {
               </span>
             )}
           </h2>
-          <Link href="/quiz" className="text-xs font-medium" style={{ color: "var(--accent-text)" }}>
-            Go to Quizzes →
-          </Link>
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] hidden sm:block" style={{ color: "var(--text-muted)" }}>
+              Weak = accuracy &lt; 60%
+            </span>
+            <Link href="/quiz" className="text-xs font-medium" style={{ color: "var(--accent-text)" }}>
+              Go to Quizzes →
+            </Link>
+          </div>
         </div>
 
         {weakTopics.length === 0 ? (
@@ -203,7 +230,7 @@ export default function DashboardPage() {
                 </div>
                 <Link
                   href={`/quiz?doc=${item.document_id}&topic=${encodeURIComponent(item.topic)}`}
-                  className="px-3 py-1 rounded-lg text-white text-xs font-semibold transition-colors shadow-sm shrink-0"
+                  className="px-3 py-1 rounded-lg text-white text-xs font-semibold transition-all hover:bg-rose-700 active:scale-[0.98] shadow-sm shrink-0 focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:outline-none"
                   style={{ background: "#e11d48" }}
                 >
                   Practice
@@ -248,7 +275,7 @@ export default function DashboardPage() {
             </p>
             <Link
               href="/documents"
-              className="px-4 py-2 text-xs font-medium rounded-lg text-white transition-colors"
+              className="px-4 py-2 text-xs font-medium rounded-lg text-white shadow-sm transition-all hover:brightness-105 active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none inline-block"
               style={{ background: "var(--accent)" }}
             >
               Upload Your First Document
@@ -325,30 +352,37 @@ export default function DashboardPage() {
                         {doc.created_at ? new Date(doc.created_at).toLocaleDateString() : "—"}
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        {doc.status === "READY" ? (
-                          <div className="flex items-center justify-end gap-2">
-                            <Link
-                              href={`/chat?doc=${docId}`}
-                              className="px-2.5 py-1 text-xs font-medium rounded transition-colors"
-                              style={{
-                                background: "var(--accent-surface)",
-                                color: "var(--accent-text)",
-                              }}
-                            >
-                              Chat
-                            </Link>
-                            <Link
-                              href={`/quiz?doc=${docId}`}
-                              className="px-2.5 py-1 text-xs font-medium rounded transition-colors bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300"
-                            >
-                              Quiz
-                            </Link>
-                          </div>
-                        ) : (
-                          <span className="text-xs italic" style={{ color: "var(--text-muted)" }}>
-                            Unavailable
-                          </span>
-                        )}
+                        <div className="flex items-center justify-end gap-2">
+                          {doc.status === "READY" && (
+                            <>
+                              <Link
+                                href={`/chat?doc=${docId}`}
+                                className="px-2.5 py-1 text-xs font-medium rounded-lg transition-all hover:brightness-95 active:scale-[0.98] hover:shadow-xs focus-visible:ring-2 focus-visible:outline-none"
+                                style={{
+                                  background: "var(--accent-surface)",
+                                  color: "var(--accent-text)",
+                                }}
+                              >
+                                Chat
+                              </Link>
+                              <Link
+                                href={`/quiz?doc=${docId}`}
+                                className="px-2.5 py-1 text-xs font-medium rounded-lg transition-all bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:hover:bg-purple-900/60 dark:text-purple-300 active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
+                              >
+                                Quiz
+                              </Link>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDocument(docId, doc.filename)}
+                            disabled={deletingDocId === docId}
+                            title="Delete document"
+                            className="px-2.5 py-1 text-xs font-medium rounded-lg transition-all disabled:opacity-50 ml-1 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:border-rose-300 dark:hover:border-rose-800 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:outline-none"
+                          >
+                            {deletingDocId === docId ? "Deleting…" : "Delete"}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

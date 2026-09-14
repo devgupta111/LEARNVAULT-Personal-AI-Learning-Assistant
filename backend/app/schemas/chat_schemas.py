@@ -58,6 +58,21 @@ class ChatRequest(BaseModel):
 
 # ─── Response schemas ─────────────────────────────────────────────────────────
 
+class RenameSessionRequest(BaseModel):
+    """Body for PUT /chat/sessions/{session_id} — renames a chat session."""
+    title: str
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Session title cannot be empty.")
+        if len(v) > 255:
+            raise ValueError(f"Session title is too long ({len(v)} characters). Maximum is 255.")
+        return v
+
+
 class CitationItem(BaseModel):
     """A single citation referencing a source chunk used in the answer."""
     source_id: str          # e.g. "Source 1"
@@ -80,6 +95,7 @@ class SessionResponse(BaseModel):
     session_id: str
     document_id: str
     created_at: str
+    title: Optional[str] = None
 
 
 class MessageResponse(BaseModel):

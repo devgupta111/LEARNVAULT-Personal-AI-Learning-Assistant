@@ -7,6 +7,7 @@ Endpoints:
     POST /documents/upload     Upload a PDF and start background extraction
     GET  /documents            List all documents (dev: all users)
     GET  /documents/{id}       Get status and metadata for one document
+    DELETE /documents/{id}     Delete a document and all associated data
 """
 
 import uuid
@@ -20,6 +21,10 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.database import get_db, SessionLocal
 from app.models.document import Document
+from app.models.session import Session as ChatSession
+from app.models.message import Message
+from app.models.quiz import Quiz
+from app.models.quiz_attempt import QuizAttempt
 from app.schemas.document import DocumentUploadResponse, DocumentSummary, DocumentDetail
 from app.services.pdf_service import extract_text_from_pdf, is_document_fully_scanned
 from app.services.pipeline_service import run_ingestion_pipeline
@@ -31,6 +36,7 @@ from app.services.document_service import (
     document_to_summary,
     document_to_detail,
 )
+from app.services.qdrant_service import delete_document_vectors
 from app.api.auth import get_current_user
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
@@ -219,4 +225,136 @@ def get_document(
             detail="You do not have permission to access this document.",
         )
     return document_to_detail(doc)
+
+
+@router.delete("/{document_id}", status_code=200)
+def delete_document(
+    document_id: str,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    DELETE /documents/{document_id} — Permanently delete a document.
+
+    Deletion order (respecting FK dependencies, no ORM cascade configured):
+      1. Verify authenticated ownership.
+      2. Delete quiz_attempts for quizzes belonging to this document.
+      3. Delete quizzes belonging to this document.
+      4. Delete messages for sessions belonging to this document.
+      5. Delete sessions belonging to this document.
+      6. Delete uploaded PDF file from data/uploads/.
+      7. Delete Qdrant vectors for this document (filtered by document_id AND user_id).
+      8. Delete document row from PostgreSQL.
+
+    External resource cleanup (file + Qdrant) is performed before the DB row is
+    deleted. If either fails, a warning is logged and deletion continues so we do
+    not leave an orphaned DB row. The error is included in the response.
+
+    Security:
+      - user_id is derived from get_current_user() — never trusted from the request.
+      - Returns 403 if the document belongs to a different user.
+    """
+    # Step 1: Verify ownership
+    doc = get_document_by_id(db, document_id)
+    if doc is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Document '{document_id}' not found.",
+        )
+    if doc.user_id != current_user:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to delete this document.",
+        )
+
+    cleanup_warnings: List[str] = []
+
+    # Step 2: Delete quiz_attempts for this document's quizzes
+    quiz_ids = [
+        q.id for q in db.query(Quiz.id).filter(Quiz.document_id == document_id).all()
+    ]
+    if quiz_ids:
+        deleted_attempts = (
+            db.query(QuizAttempt)
+            .filter(QuizAttempt.quiz_id.in_(quiz_ids))
+            .delete(synchronize_session="fetch")
+        )
+        logger.info(
+            "Deleted %d quiz_attempt(s) for document %s",
+            deleted_attempts,
+            document_id,
+        )
+
+    # Step 3: Delete quizzes
+    deleted_quizzes = (
+        db.query(Quiz)
+        .filter(Quiz.document_id == document_id)
+        .delete(synchronize_session="fetch")
+    )
+    logger.info("Deleted %d quiz(es) for document %s", deleted_quizzes, document_id)
+
+    # Step 4: Delete messages for this document's sessions
+    session_ids = [
+        s.id
+        for s in db.query(ChatSession.id).filter(ChatSession.document_id == document_id).all()
+    ]
+    if session_ids:
+        deleted_messages = (
+            db.query(Message)
+            .filter(Message.session_id.in_(session_ids))
+            .delete(synchronize_session="fetch")
+        )
+        logger.info(
+            "Deleted %d message(s) for document %s",
+            deleted_messages,
+            document_id,
+        )
+
+    # Step 5: Delete sessions
+    deleted_sessions = (
+        db.query(ChatSession)
+        .filter(ChatSession.document_id == document_id)
+        .delete(synchronize_session="fetch")
+    )
+    logger.info("Deleted %d session(s) for document %s", deleted_sessions, document_id)
+
+    db.commit()
+
+    # Step 6: Delete uploaded PDF file
+    upload_path = Path(settings.UPLOAD_DIR) / f"{document_id}.pdf"
+    try:
+        if upload_path.exists():
+            upload_path.unlink()
+            logger.info("Deleted uploaded file: %s", upload_path)
+        else:
+            logger.info("Upload file not found (already absent): %s", upload_path)
+    except OSError as exc:
+        msg = f"Failed to delete uploaded file '{upload_path}': {exc}"
+        logger.error(msg)
+        cleanup_warnings.append(msg)
+
+    # Step 7: Delete Qdrant vectors (filtered by document_id AND user_id for safety)
+    try:
+        delete_document_vectors(document_id=document_id, user_id=current_user)
+    except RuntimeError as exc:
+        msg = f"Qdrant vector cleanup warning: {exc}"
+        logger.error(msg)
+        cleanup_warnings.append(msg)
+
+    # Step 8: Delete document row
+    db.delete(doc)
+    db.commit()
+
+    logger.info(
+        "Document %s deleted by user %s. Warnings: %s",
+        document_id,
+        current_user,
+        cleanup_warnings or "none",
+    )
+
+    response: dict = {"deleted": True, "document_id": document_id}
+    if cleanup_warnings:
+        response["warnings"] = cleanup_warnings
+    return response
+
 

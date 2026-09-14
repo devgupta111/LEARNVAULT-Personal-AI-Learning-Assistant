@@ -40,6 +40,7 @@ import { useEffect, useRef, useState } from "react";
 import { clearToken, getToken, getUser } from "../lib/api";
 import { useTheme, Theme } from "../hooks/useTheme";
 import { User } from "../types";
+import UserGuideModal from "./UserGuideModal";
 
 const NAV_LINKS = [
   { name: "Dashboard", href: "/dashboard" },
@@ -65,6 +66,7 @@ export default function Navbar() {
   // Authenticated profile dropdown
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [profileThemeSubmenuOpen, setProfileThemeSubmenuOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
 
   // Unauthenticated public theme dropdown
@@ -197,6 +199,7 @@ export default function Navbar() {
   const currentThemeIcon = THEMES.find((t) => t.value === theme)?.icon || "🌙";
 
   return (
+    <>
     <header
       className="sticky top-0 z-50 border-b"
       style={{
@@ -211,7 +214,7 @@ export default function Navbar() {
         <div className="flex items-center gap-6 min-w-0">
           <Link
             href={logoHref}
-            className="flex items-center gap-2.5 font-bold text-base shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 rounded-lg"
+            className="flex items-center gap-2.5 font-bold text-base shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 rounded-lg transition-transform active:scale-[0.98]"
             style={{ color: "var(--text-primary)" }}
             title={currentUser ? "Dashboard" : "Home"}
           >
@@ -233,7 +236,7 @@ export default function Navbar() {
                   <Link
                     key={link.href}
                     href={link.href}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                    className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
                     style={
                       isActive
                         ? {
@@ -277,7 +280,7 @@ export default function Navbar() {
                   aria-haspopup="true"
                   aria-expanded={profileMenuOpen}
                   aria-label="User profile menu"
-                  className="flex items-center gap-2 py-1.5 px-2 sm:px-2.5 rounded-xl text-xs font-medium transition-colors border"
+                  className="flex items-center gap-2 py-1.5 px-2 sm:px-2.5 rounded-xl text-xs font-medium transition-all border active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
                   style={{
                     background: profileMenuOpen ? "var(--bg-surface-2)" : "transparent",
                     borderColor: profileMenuOpen ? "var(--border)" : "transparent",
@@ -414,7 +417,7 @@ export default function Navbar() {
                       <Link
                         href="/profile"
                         onClick={() => setProfileMenuOpen(false)}
-                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-xs font-medium transition-colors"
+                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-xs font-medium transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
                         style={{ color: "var(--text-secondary)" }}
                         role="menuitem"
                         onMouseEnter={(e) => {
@@ -437,12 +440,39 @@ export default function Navbar() {
                         <span>Profile</span>
                       </Link>
 
+                      {/* 📖 User Guide */}
+                      <button
+                        type="button"
+                        onClick={() => { setProfileMenuOpen(false); setGuideOpen(true); }}
+                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-xs font-medium transition-all text-left active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
+                        style={{ color: "var(--text-secondary)" }}
+                        role="menuitem"
+                        onMouseEnter={(e) => {
+                          (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)";
+                          (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as HTMLElement).style.background = "";
+                          (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)";
+                        }}
+                      >
+                        <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={1.75}
+                            d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                          />
+                        </svg>
+                        <span>User Guide</span>
+                      </button>
+
                       {/* 🎨 Theme with Submenu toggle */}
                       <div>
                         <button
                           type="button"
                           onClick={() => setProfileThemeSubmenuOpen((prev) => !prev)}
-                          className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs font-medium transition-colors"
+                          className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs font-medium transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
                           style={{
                             color: profileThemeSubmenuOpen ? "var(--text-primary)" : "var(--text-secondary)",
                             background: profileThemeSubmenuOpen ? "var(--bg-surface-2)" : "",
@@ -503,7 +533,7 @@ export default function Navbar() {
                                   onClick={() => {
                                     setTheme(opt.value);
                                   }}
-                                  className="flex items-center justify-between w-full px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                                  className="flex items-center justify-between w-full px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
                                   style={
                                     isSelected
                                       ? {
@@ -554,7 +584,7 @@ export default function Navbar() {
                       <button
                         type="button"
                         onClick={handleLogout}
-                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-xs font-medium transition-colors text-left"
+                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-xs font-medium transition-all text-left active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
                         style={{ color: "var(--text-secondary)" }}
                         role="menuitem"
                         onMouseEnter={(e) => {
@@ -581,8 +611,34 @@ export default function Navbar() {
                 )}
               </div>
             ) : (
-              /* ── LOGGED-OUT NAVBAR: [Theme ▼] + [Sign In] ── */
+              /* ── LOGGED-OUT NAVBAR: [User Guide] + [Theme ▼] + [Sign In] ── */
               <div className="flex items-center gap-2">
+                {/* Public User Guide Button (usable without logging in) */}
+                <button
+                  type="button"
+                  onClick={() => setGuideOpen(true)}
+                  aria-label="Open User Guide"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all border active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
+                  style={{
+                    background: guideOpen ? "var(--bg-surface-2)" : "var(--bg-surface)",
+                    borderColor: "var(--border)",
+                    color: "var(--text-secondary)",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)";
+                    (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!guideOpen) {
+                      (e.currentTarget as HTMLElement).style.background = "var(--bg-surface)";
+                      (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)";
+                    }
+                  }}
+                >
+                  <span className="text-sm leading-none">📖</span>
+                  <span className="hidden sm:inline">User Guide</span>
+                </button>
+
                 {/* Public Theme Dropdown (usable without logging in) */}
                 <div className="relative" ref={publicThemeRef}>
                   <button
@@ -591,7 +647,7 @@ export default function Navbar() {
                     aria-haspopup="true"
                     aria-expanded={publicThemeOpen}
                     aria-label="Theme selector"
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors border"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all border active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
                     style={{
                       background: publicThemeOpen ? "var(--bg-surface-2)" : "var(--bg-surface)",
                       borderColor: "var(--border)",
@@ -642,7 +698,7 @@ export default function Navbar() {
                               setTheme(opt.value);
                               setPublicThemeOpen(false);
                             }}
-                            className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-left transition-colors"
+                            className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-left transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
                             style={
                               isSelected
                                 ? {
@@ -690,7 +746,7 @@ export default function Navbar() {
                 {!isLoginPage && (
                   <Link
                     href="/login"
-                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-white transition-all shadow-sm"
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-white transition-all shadow-sm active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none hover:brightness-105"
                     style={{ background: "var(--accent)" }}
                     onMouseEnter={(e) => {
                       (e.currentTarget as HTMLElement).style.background = "var(--accent-hover)";
@@ -711,5 +767,9 @@ export default function Navbar() {
         </div>
       </div>
     </header>
+
+    {/* User Guide Modal — rendered outside the sticky header to sit on top of everything */}
+    {guideOpen && <UserGuideModal onClose={() => setGuideOpen(false)} />}
+  </>
   );
 }

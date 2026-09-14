@@ -17,10 +17,35 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GOOGLE_CLIENT_ID, getToken, loginUser, loginWithGoogle } from "../../../lib/api";
+import UserGuideModal from "../../../components/UserGuideModal";
+
+interface GoogleIdentityServices {
+  accounts?: {
+    id?: {
+      initialize: (config: {
+        client_id: string;
+        callback: (response: { credential?: string }) => void;
+        auto_select?: boolean;
+        cancel_on_tap_outside?: boolean;
+      }) => void;
+      renderButton: (
+        parent: HTMLElement,
+        options: {
+          theme?: string;
+          size?: string;
+          text?: string;
+          shape?: string;
+          width?: number;
+          logo_alignment?: string;
+        }
+      ) => void;
+    };
+  };
+}
 
 declare global {
   interface Window {
-    google?: any;
+    google?: GoogleIdentityServices;
   }
 }
 
@@ -31,6 +56,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [gisReady, setGisReady] = useState(false);
   const [gisTimeout, setGisTimeout] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const initializedRef = useRef(false);
 
   // 1. Returning authenticated user: redirect to /dashboard immediately
@@ -179,10 +205,10 @@ export default function LoginPage() {
             className="text-2xl font-bold"
             style={{ color: "var(--text-primary)" }}
           >
-            Personal AI Learning Assistant
+            Welcome to Personal AI Learning Assistant
           </h1>
           <p className="text-sm mt-2" style={{ color: "var(--text-muted)" }}>
-            Sign in to access your study dashboard
+            Sign in or create your account to continue.
           </p>
         </div>
 
@@ -250,7 +276,7 @@ export default function LoginPage() {
             type="button"
             onClick={handleGuestLogin}
             disabled={loading}
-            className="w-full py-2.5 rounded-xl text-xs font-semibold transition-colors disabled:opacity-50"
+            className="w-full py-2.5 rounded-xl text-xs font-semibold transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
             style={{
               background: "var(--bg-surface-2)",
               color: "var(--text-secondary)",
@@ -268,7 +294,23 @@ export default function LoginPage() {
             Continue as Guest
           </button>
         </div>
+
+        {/* User Guide link for visitors before login */}
+        <div className="mt-6 pt-4 text-center" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+          <button
+            type="button"
+            onClick={() => setShowGuide(true)}
+            className="inline-flex items-center gap-1.5 text-xs transition-colors hover:underline focus-visible:ring-2 focus-visible:outline-none rounded px-2 py-1"
+            style={{ color: "var(--text-muted)" }}
+          >
+            <span>📖</span>
+            <span>New here? Read the User Guide</span>
+          </button>
+        </div>
       </div>
+
+      {/* User Guide Modal */}
+      {showGuide && <UserGuideModal onClose={() => setShowGuide(false)} />}
     </div>
   );
 }

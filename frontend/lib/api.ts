@@ -83,7 +83,7 @@ async function authFetch(
 
 export const GOOGLE_CLIENT_ID =
   process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
-  "579242917589-fqs5berd8f4uergvrif5rh9uvge5lrf9.apps.googleusercontent.com";
+  "345444138884-bbigs9vt771fii89o3kf0ncs1snl01fu.apps.googleusercontent.com";
 
 // ─── Authentication API ──────────────────────────────────────────────────────
 
@@ -209,7 +209,16 @@ export async function uploadDocument(
   return res.json();
 }
 
+export async function deleteDocument(documentId: string): Promise<void> {
+  const res = await authFetch(`/documents/${documentId}`, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to delete document" }));
+    throw new Error(err.detail || `Failed to delete document (${res.status})`);
+  }
+}
+
 // ─── Sessions and Chat API ───────────────────────────────────────────────────
+
 
 export async function getSessions(documentId?: string): Promise<ChatSession[]> {
   const url = documentId
@@ -245,11 +254,32 @@ export async function getSessionMessages(
     throw new Error("Failed to fetch session messages");
   }
   const data = await res.json();
-  return (data || []).map((m: any) => ({
+  return (data || []).map((m: Record<string, unknown>) => ({
     ...m,
-    id: m.message_id || m.id || `msg-${Math.random()}`,
-    message_id: m.message_id || m.id,
-  }));
+    id: (m.message_id as string) || (m.id as string) || `msg-${Math.random()}`,
+    message_id: (m.message_id as string) || (m.id as string),
+  })) as ChatMessage[];
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  const res = await authFetch(`/sessions/${sessionId}`, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to delete session" }));
+    throw new Error(err.detail || `Failed to delete session (${res.status})`);
+  }
+}
+
+export async function renameSession(sessionId: string, title: string): Promise<ChatSession> {
+  const res = await authFetch(`/chat/sessions/${sessionId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to rename session" }));
+    throw new Error(err.detail || `Failed to rename session (${res.status})`);
+  }
+  return res.json();
 }
 
 
@@ -407,3 +437,14 @@ export async function getQuizHistory(): Promise<QuizHistoryItem[]> {
   return res.json();
 }
 
+export async function renameQuizTopic(quizId: string, topic: string): Promise<void> {
+  const res = await authFetch(`/quiz/${quizId}/rename`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ topic }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to rename topic" }));
+    throw new Error(err.detail || `Failed to rename topic (${res.status})`);
+  }
+}

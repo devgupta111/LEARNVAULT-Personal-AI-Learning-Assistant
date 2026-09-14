@@ -353,6 +353,77 @@ def upsert_document_chunks(
         ) from exc
 
 
+def delete_document_vectors(
+    document_id: str,
+    user_id: str,
+    client: Optional[QdrantClient] = None,
+    collection_name: Optional[str] = None,
+) -> int:
+    """
+    Delete all Qdrant vectors for a given document owned by the authenticated user.
+
+    Filters by both document_id AND user_id payload to prevent cross-user deletion.
+
+    This MUST be called explicitly when deleting a document — PostgreSQL ON DELETE CASCADE
+    does NOT propagate to Qdrant.
+
+    Args:
+        document_id: The document whose vectors should be removed.
+        user_id: The authenticated owner — used as an additional safety filter.
+        client: Optional QdrantClient instance.
+        collection_name: Optional collection name override.
+
+    Returns:
+        Number of points deleted (may be 0 if no vectors existed).
+
+    Raises:
+        RuntimeError: If Qdrant is unavailable or deletion fails.
+    """
+    target_client = client or get_qdrant_client()
+    target_collection = collection_name or settings.QDRANT_COLLECTION_NAME
+
+    # Safety: only delete points matching BOTH document_id and user_id
+    delete_filter = models.Filter(
+        must=[
+            models.FieldCondition(
+                key="document_id",
+                match=models.MatchValue(value=document_id),
+            ),
+            models.FieldCondition(
+                key="user_id",
+                match=models.MatchValue(value=user_id),
+            ),
+        ]
+    )
+
+    try:
+        result = target_client.delete(
+            collection_name=target_collection,
+            points_selector=models.FilterSelector(filter=delete_filter),
+            wait=True,
+        )
+        # result.status is an OperationStatus enum; check for failure
+        status_val = str(result.status) if result.status else "unknown"
+        logger.info(
+            "Deleted Qdrant vectors for document_id=%s user_id=%s status=%s",
+            document_id,
+            user_id,
+            status_val,
+        )
+        # Return estimated deleted count; Qdrant doesn't always return exact count
+        return getattr(result, "result", 0) or 0
+    except Exception as exc:
+        logger.error(
+            "Failed to delete Qdrant vectors for document_id=%s user_id=%s: %s",
+            document_id,
+            user_id,
+            exc,
+        )
+        raise RuntimeError(
+            f"Failed to delete Qdrant vectors for document '{document_id}': {exc}"
+        ) from exc
+
+
 def get_collection_info(
     client: Optional[QdrantClient] = None,
     collection_name: Optional[str] = None,

@@ -59,6 +59,7 @@ export interface ChatSession {
   user_id?: string;
   document_id: string;
   created_at: string;
+  title?: string | null;
 }
 
 export interface ChatMessage {

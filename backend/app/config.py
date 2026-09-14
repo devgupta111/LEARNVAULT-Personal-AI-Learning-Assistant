@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     QUIZ_MODEL: str = "llama-3.1-8b-instant"
 
     # Day 7 — Google Identity Services Client ID
-    GOOGLE_CLIENT_ID: str = "579242917589-fqs5berd8f4uergvrif5rh9uvge5lrf9.apps.googleusercontent.com"
+    GOOGLE_CLIENT_ID: str = "345444138884-bbigs9vt771fii89o3kf0ncs1snl01fu.apps.googleusercontent.com"
 
 
 

@@ -34,6 +34,13 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("Starting up — creating database tables if needed")
     Base.metadata.create_all(bind=engine)
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS title VARCHAR(255);"))
+            conn.commit()
+    except Exception as exc:
+        logger.warning("Could not run title column migration: %s", exc)
     logger.info("Database tables ready")
 
     # Day 3: Ensure Qdrant collection and payload indexes exist

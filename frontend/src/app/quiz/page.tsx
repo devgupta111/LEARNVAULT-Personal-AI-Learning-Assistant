@@ -14,13 +14,16 @@
 
 "use client";
 
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, Suspense, useCallback } from "react";
 import { useAuth } from "../../../hooks/useAuth";
+import { useToast } from "../../../components/Toast";
 import {
   generateQuiz,
   getDocuments,
   getQuizHistory,
+  renameQuizTopic,
   submitQuiz,
 } from "../../../lib/api";
 import {
@@ -32,26 +35,38 @@ import {
 
 function QuizComponent() {
   const { loading: authLoading } = useAuth(true);
+  const toast = useToast();
   const searchParams = useSearchParams();
   const initialDocId = searchParams.get("doc");
-  const initialTopic = searchParams.get("topic");
+  const initialTopic = searchParams.get("topic") || "";
 
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [selectedDocId, setSelectedDocId] = useState<string>("");
-  const [topic, setTopic] = useState<string>("");
+  const [topic, setTopic] = useState<string>(initialTopic);
   const [currentQuiz, setCurrentQuiz] = useState<QuizDetail | null>(null);
   const [userAnswers, setUserAnswers] = useState<Record<number, string>>({});
   const [submissionResult, setSubmissionResult] = useState<QuizSubmissionResult | null>(null);
   const [history, setHistory] = useState<QuizHistoryItem[]>([]);
+  const [showIncorrectOnly, setShowIncorrectOnly] = useState(false);
 
   const [generating, setGenerating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingQuizId, setEditingQuizId] = useState<string | null>(null);
+  const [editingTopic, setEditingTopic] = useState<string>("");
 
-  useEffect(() => {
-    if (initialTopic) setTopic(initialTopic);
-  }, [initialTopic]);
+  const loadHistory = useCallback(async () => {
+    try {
+      setLoadingHistory(true);
+      const hist = await getQuizHistory();
+      setHistory(hist);
+    } catch {
+      // Non-fatal
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
 
   // Load docs and history after auth resolves
   useEffect(() => {
@@ -75,20 +90,7 @@ function QuizComponent() {
     }
     loadInitial();
     loadHistory();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, initialDocId]);
-
-  const loadHistory = async () => {
-    try {
-      setLoadingHistory(true);
-      const hist = await getQuizHistory();
-      setHistory(hist);
-    } catch {
-      // Non-fatal
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
+  }, [authLoading, initialDocId, loadHistory]);
 
   const handleGenerateQuiz = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -101,6 +103,7 @@ function QuizComponent() {
     setCurrentQuiz(null);
     setUserAnswers({});
     setSubmissionResult(null);
+    setShowIncorrectOnly(false);
     try {
       const quiz = await generateQuiz(selectedDocId, topic.trim() || undefined);
       setCurrentQuiz(quiz);
@@ -120,6 +123,7 @@ function QuizComponent() {
     setCurrentQuiz(null);
     setUserAnswers({});
     setSubmissionResult(null);
+    setShowIncorrectOnly(false);
     try {
       const quiz = await generateQuiz(docId, weakTopic);
       setCurrentQuiz(quiz);
@@ -157,6 +161,23 @@ function QuizComponent() {
       setError(msg);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleRenameQuiz = async (quizId: string) => {
+    const newTopic = editingTopic.trim();
+    if (!newTopic) { setEditingQuizId(null); return; }
+    try {
+      await renameQuizTopic(quizId, newTopic);
+      setHistory((prev) =>
+        prev.map((h) => h.quiz_id === quizId ? { ...h, topic: newTopic } : h)
+      );
+      toast.success("Quiz topic renamed successfully.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to rename topic";
+      toast.error(msg);
+    } finally {
+      setEditingQuizId(null);
     }
   };
 
@@ -250,7 +271,7 @@ function QuizComponent() {
           <button
             type="submit"
             disabled={generating || documents.length === 0}
-            className="w-full py-2.5 rounded-lg text-white font-medium text-xs transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full py-2.5 rounded-lg text-white font-medium text-xs transition-all hover:brightness-105 active:scale-[0.98] shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:outline-none"
             style={{ background: "var(--accent)" }}
           >
             {generating ? (
@@ -263,6 +284,19 @@ function QuizComponent() {
             )}
           </button>
         </form>
+
+        {documents.length === 0 && (
+          <p className="text-xs mt-3 text-center sm:text-left" style={{ color: "var(--text-muted)" }}>
+            No ready documents found.{" "}
+            <Link
+              href="/documents"
+              className="font-semibold underline transition-colors hover:brightness-110"
+              style={{ color: "var(--accent)" }}
+            >
+              Upload a PDF to start practicing →
+            </Link>
+          </p>
+        )}
       </div>
 
       {/* Active quiz */}
@@ -303,81 +337,157 @@ function QuizComponent() {
             )}
           </div>
 
-          {/* Questions */}
-          <div className="space-y-6">
-            {currentQuiz.questions.map((q, qIdx) => {
-              const selectedOption = userAnswers[qIdx];
-              const qResult = submissionResult?.results[qIdx];
-              return (
-                <div
-                  key={qIdx}
-                  className="p-4 rounded-xl border transition-colors"
-                  style={{
-                    borderColor: qResult
-                      ? qResult.is_correct ? "#10b98155" : "#f43f5e55"
-                      : "var(--border)",
-                    background: qResult
-                      ? qResult.is_correct ? "#10b9811a" : "#f43f5e1a"
-                      : "var(--bg-surface-2)",
-                  }}
-                >
-                  <p className="text-sm font-semibold mb-3" style={{ color: "var(--text-primary)" }}>
-                    <span style={{ color: "var(--accent-text)" }} className="mr-2">Q{qIdx + 1}.</span>
-                    {q.question}
-                  </p>
+          {/* Review Filter Bar (visible when graded) */}
+          {submissionResult && (
+            <div
+              className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl border gap-3"
+              style={{
+                background: "var(--bg-surface-2)",
+                borderColor: "var(--border)",
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
+                  Review Mode:
+                </span>
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  {submissionResult.results.filter((r) => !r.is_correct).length} incorrect of {submissionResult.total} questions
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowIncorrectOnly((prev) => !prev)}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 self-start sm:self-auto active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
+                style={{
+                  background: showIncorrectOnly ? "var(--accent)" : "var(--bg-surface)",
+                  color: showIncorrectOnly ? "#ffffff" : "var(--text-secondary)",
+                  border: `1px solid ${showIncorrectOnly ? "var(--accent)" : "var(--border)"}`,
+                }}
+                aria-pressed={showIncorrectOnly}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                </svg>
+                <span>{showIncorrectOnly ? "Showing Incorrect Only" : "Show Incorrect Answers Only"}</span>
+              </button>
+            </div>
+          )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {q.options.map((opt, optIdx) => {
-                      const isSelected = selectedOption === opt;
-                      let style: React.CSSProperties = {
-                        border: "1px solid var(--border)",
-                        background: "var(--bg-surface)",
-                        color: "var(--text-secondary)",
-                      };
+          {/* Questions or Empty Review State */}
+          {submissionResult && showIncorrectOnly && currentQuiz.questions.every((_, idx) => submissionResult.results[idx]?.is_correct) ? (
+            <div
+              className="p-8 rounded-xl text-center space-y-2 border border-dashed"
+              style={{
+                borderColor: "var(--border)",
+                background: "var(--bg-surface-2)",
+              }}
+            >
+              <div className="text-2xl">🎉</div>
+              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                No incorrect answers. Great job!
+              </p>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                You scored 100% on this quiz. Every answer you submitted was correct.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowIncorrectOnly(false)}
+                className="mt-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all hover:bg-[var(--bg-hover)] active:scale-[0.98]"
+                style={{
+                  border: "1px solid var(--border)",
+                  color: "var(--accent-text)",
+                  background: "var(--bg-surface)",
+                }}
+              >
+                Show all questions
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {currentQuiz.questions
+                .map((q, qIdx) => ({ q, qIdx }))
+                .filter(({ qIdx }) => {
+                  if (!submissionResult || !showIncorrectOnly) return true;
+                  return submissionResult.results[qIdx]?.is_correct === false;
+                })
+                .map(({ q, qIdx }) => {
+                  const selectedOption = userAnswers[qIdx];
+                  const qResult = submissionResult?.results[qIdx];
+                  return (
+                    <div
+                      key={qIdx}
+                      className="p-4 rounded-xl border transition-colors"
+                      style={{
+                        borderColor: qResult
+                          ? qResult.is_correct ? "#10b98155" : "#f43f5e55"
+                          : "var(--border)",
+                        background: qResult
+                          ? qResult.is_correct ? "#10b9811a" : "#f43f5e1a"
+                          : "var(--bg-surface-2)",
+                      }}
+                    >
+                      <p className="text-sm font-semibold mb-3" style={{ color: "var(--text-primary)" }}>
+                        <span style={{ color: "var(--accent-text)" }} className="mr-2">Q{qIdx + 1}.</span>
+                        {q.question}
+                      </p>
 
-                      if (submissionResult) {
-                        if (opt === qResult?.correct_answer) {
-                          style = { border: "1px solid #10b981", background: "#10b9811a", color: "#065f46" };
-                        } else if (isSelected && !qResult?.is_correct) {
-                          style = { border: "1px solid #f43f5e", background: "#f43f5e1a", color: "#9f1239", textDecoration: "line-through" };
-                        } else {
-                          style = { border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-muted)", opacity: "0.6" };
-                        }
-                      } else if (isSelected) {
-                        style = {
-                          border: "1px solid var(--accent)",
-                          background: "var(--accent-surface)",
-                          color: "var(--accent-text)",
-                        };
-                      }
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {q.options.map((opt, optIdx) => {
+                          const isSelected = selectedOption === opt;
+                          let style: React.CSSProperties = {
+                            border: "1px solid var(--border)",
+                            background: "var(--bg-surface)",
+                            color: "var(--text-secondary)",
+                          };
 
-                      return (
-                        <button
-                          key={optIdx}
-                          type="button"
-                          onClick={() => handleSelectOption(qIdx, opt)}
-                          disabled={Boolean(submissionResult)}
-                          className="p-3 rounded-lg text-xs font-medium text-left transition-all"
-                          style={style}
-                        >
-                          <span className="font-mono mr-2" style={{ color: "var(--text-muted)" }}>
-                            {String.fromCharCode(65 + optIdx)}.
-                          </span>
-                          {opt}
-                        </button>
-                      );
-                    })}
-                  </div>
+                          if (submissionResult) {
+                            if (opt === qResult?.correct_answer) {
+                              style = { border: "1px solid #10b981", background: "#10b9811a", color: "#065f46" };
+                            } else if (isSelected && !qResult?.is_correct) {
+                              style = { border: "1px solid #f43f5e", background: "#f43f5e1a", color: "#9f1239", textDecoration: "line-through" };
+                            } else {
+                              style = { border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-muted)", opacity: "0.6" };
+                            }
+                          } else if (isSelected) {
+                            style = {
+                              border: "1px solid var(--accent)",
+                              background: "var(--accent-surface)",
+                              color: "var(--accent-text)",
+                            };
+                          }
 
-                  {qResult && !qResult.is_correct && (
-                    <div className="mt-2 text-xs text-rose-600 dark:text-rose-400">
-                      Correct: <span className="font-semibold">{qResult.correct_answer}</span>
+                          return (
+                            <button
+                              key={optIdx}
+                              type="button"
+                              onClick={() => handleSelectOption(qIdx, opt)}
+                              disabled={Boolean(submissionResult)}
+                              className={`p-3 rounded-lg text-xs font-medium text-left transition-all ${
+                                !submissionResult
+                                  ? "hover:border-[var(--accent)] hover:bg-[var(--bg-hover)] active:scale-[0.99] focus-visible:ring-2 focus-visible:outline-none cursor-pointer"
+                                  : "cursor-default"
+                              }`}
+                              style={style}
+                            >
+                              <span className="font-mono mr-2" style={{ color: "var(--text-muted)" }}>
+                                {String.fromCharCode(65 + optIdx)}.
+                              </span>
+                              {opt}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {qResult && !qResult.is_correct && (
+                        <div className="mt-2 text-xs text-rose-600 dark:text-rose-400">
+                          Correct: <span className="font-semibold">{qResult.correct_answer}</span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                  );
+                })}
+            </div>
+          )}
 
           {/* Submit / Result */}
           {!submissionResult ? (
@@ -388,7 +498,7 @@ function QuizComponent() {
               <button
                 onClick={handleSubmitQuiz}
                 disabled={submitting}
-                className="px-6 py-2.5 rounded-lg text-white font-medium text-xs transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2"
+                className="px-6 py-2.5 rounded-lg text-white font-medium text-xs transition-all hover:brightness-105 active:scale-[0.98] shadow-sm disabled:opacity-50 flex items-center gap-2 focus-visible:ring-2 focus-visible:outline-none"
                 style={{ background: "var(--accent)" }}
               >
                 {submitting ? (
@@ -405,7 +515,7 @@ function QuizComponent() {
             <div className="space-y-3">
               {submissionResult.percentage < 60 ? (
                 <div
-                  className="p-4 rounded-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                  className="p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                   style={{
                     background: "#f43f5e1a",
                     border: "1px solid #f43f5e55",
@@ -425,7 +535,7 @@ function QuizComponent() {
                   <button
                     onClick={() => handlePracticeWeakTopic(currentQuiz.document_id, currentQuiz.topic)}
                     disabled={generating}
-                    className="px-4 py-2 rounded-lg text-white text-xs font-semibold shadow-sm transition-colors self-start sm:self-auto"
+                    className="px-4 py-2 rounded-lg text-white text-xs font-semibold shadow-sm transition-all hover:bg-rose-700 active:scale-[0.98] self-start sm:self-auto disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:outline-none"
                     style={{ background: "#e11d48" }}
                   >
                     Practice Again
@@ -465,8 +575,9 @@ function QuizComponent() {
                     setCurrentQuiz(null);
                     setSubmissionResult(null);
                     setUserAnswers({});
+                    setShowIncorrectOnly(false);
                   }}
-                  className="px-4 py-2 rounded-lg text-xs font-semibold transition-colors"
+                  className="px-4 py-2 rounded-lg text-xs font-semibold transition-all hover:bg-[var(--bg-hover)] active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
                   style={{
                     background: "var(--bg-surface)",
                     color: "var(--text-secondary)",
@@ -489,7 +600,7 @@ function QuizComponent() {
           </h2>
           <button
             onClick={loadHistory}
-            className="text-xs transition-colors"
+            className="text-xs transition-colors hover:text-[var(--text-primary)] active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none rounded px-1.5 py-0.5"
             style={{ color: "var(--text-muted)" }}
           >
             ↻ Reload
@@ -538,7 +649,6 @@ function QuizComponent() {
                 {history.map((item) => {
                   const hasAttempt = item.latest_score !== null && item.latest_score !== undefined;
                   const pct = item.latest_percentage ?? 0;
-                  const isWeak = hasAttempt && pct < 60;
 
                   return (
                     <tr
@@ -546,7 +656,43 @@ function QuizComponent() {
                       style={{ borderBottom: "1px solid var(--border-subtle)" }}
                     >
                       <td className="py-3 px-4 font-semibold" style={{ color: "var(--text-primary)" }}>
-                        {item.topic}
+                        {editingQuizId === item.quiz_id ? (
+                          <form
+                            onSubmit={(e) => { e.preventDefault(); handleRenameQuiz(item.quiz_id); }}
+                            className="flex items-center gap-1.5"
+                          >
+                            <input
+                              autoFocus
+                              value={editingTopic}
+                              onChange={(e) => setEditingTopic(e.target.value)}
+                              onBlur={() => handleRenameQuiz(item.quiz_id)}
+                              onKeyDown={(e) => e.key === "Escape" && setEditingQuizId(null)}
+                              className="w-full px-2 py-0.5 rounded border text-xs"
+                              style={{
+                                background: "var(--bg-surface-2)",
+                                borderColor: "var(--accent)",
+                                color: "var(--text-primary)",
+                              }}
+                              maxLength={255}
+                            />
+                          </form>
+                        ) : (
+                          <div className="group flex items-center gap-1.5">
+                            <span className="truncate max-w-[180px]">{item.topic}</span>
+                            <button
+                              type="button"
+                              onClick={() => { setEditingQuizId(item.quiz_id); setEditingTopic(item.topic); }}
+                              title="Rename topic"
+                              aria-label="Rename topic"
+                              className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all text-[11px] p-1 rounded-md hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] focus-visible:ring-2 focus-visible:outline-none"
+                              style={{ color: "var(--text-muted)" }}
+                            >
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a2 2 0 01-1.414.586H8v-2.414a2 2 0 01.586-1.414z" />
+                              </svg>
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-4" style={{ color: "var(--text-secondary)" }}>
                         {item.num_questions}
@@ -559,7 +705,15 @@ function QuizComponent() {
                       </td>
                       <td className="py-3 px-4">
                         {hasAttempt ? (
-                          isWeak ? (
+                          pct >= 80 ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900">
+                              Strong (≥80%)
+                            </span>
+                          ) : pct >= 60 ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 border border-blue-200 dark:border-blue-900">
+                              Good (60–79%)
+                            </span>
+                          ) : (
                             <div className="flex items-center gap-2">
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border border-rose-200 dark:border-rose-900 shrink-0">
                                 Weak (&lt;60%)
@@ -567,16 +721,12 @@ function QuizComponent() {
                               <button
                                 onClick={() => handlePracticeWeakTopic(item.document_id, item.topic)}
                                 disabled={generating}
-                                className="px-2 py-0.5 rounded text-white text-[10px] font-semibold transition-colors shadow-sm shrink-0"
+                                className="px-2 py-0.5 rounded text-white text-[10px] font-semibold transition-all hover:bg-rose-700 active:scale-[0.98] shadow-sm shrink-0 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:outline-none"
                                 style={{ background: "#e11d48" }}
                               >
                                 Practice
                               </button>
                             </div>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900">
-                              Mastered (≥60%)
-                            </span>
                           )
                         ) : (
                           <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Not attempted</span>
