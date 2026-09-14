@@ -1969,6 +1969,87 @@ All updated components were verified across all three supported themes:
   - Backend API running at `http://127.0.0.1:8000` (`GET /health` -> `{"status":"ok"}`).
   - Next.js Web App running at `http://localhost:3000` (`GET /` -> HTTP 200).
 
+------------------------------------------------------------------------
+
+# 27. Landing Page Cleanup, Auth Navigation Verification & Mobile Responsiveness
+
+### 1. Requirements & Scope Lock
+- **Scope**: Strictly limited to duplicate User Guide CTA removal on the landing page, logged-out navigation behavior verification (`Visible ≠ Authorized`), mobile responsiveness, mobile navigation drawer/hamburger menu, three-theme compatibility, and accessibility.
+- **Strictly Unchanged**:
+  - No changes to the 4-agent RAG pipeline (Router, CRAG, Grader, Quiz).
+  - No changes to Qdrant vector database, chunking, or embeddings.
+  - No changes to backend database models or APIs.
+  - No changes to authentication architecture or Google Identity Services integration.
+  - No third-party UI/menu libraries installed; native React state and CSS variables used throughout.
+
+### 2. Changes Implemented
+- **Center User Guide CTA Removed (`frontend/src/app/page.tsx`)**:
+  - Removed duplicate center `"Read User Guide"` button from the hero section.
+  - Retained the primary Navbar `"User Guide"` button and modal triggers across desktop and mobile.
+  - Cleaned up unused `showGuide` state and `UserGuideModal` import from `page.tsx`.
+  - Rebalanced hero spacing, typography, and button container layout (`text-3xl sm:text-5xl lg:text-6xl`, `w-full sm:w-auto` for CTA buttons to prevent clipping or viewport overflow on narrow mobile screens).
+- **Logged-Out Navigation Verification (`Visible ≠ Authorized`)**:
+  - Retained navigation links (`Dashboard`, `Documents`, `RAG Chat`, `Quiz`) visible in Navbar for discovery.
+  - Verified client-side route protection via `useAuth(true)`:
+    - Unauthenticated access to `/dashboard`, `/documents`, `/chat`, `/quiz`, or `/profile` triggers an immediate synchronous `router.replace("/login")` without flashing protected UI or user data.
+    - Initial data fetching (`fetchDocs`, `loadInitial`, `loadHistory`, `fetchData`) is strictly gated on `!authLoading`, guaranteeing zero unauthenticated API requests.
+    - Verified backend APIs enforce JWT authentication via `get_current_user` (HTTP 401 Unauthorized for missing/invalid tokens).
+- **Mobile Navbar & Hamburger Menu (`frontend/components/Navbar.tsx`)**:
+  - Added responsive hamburger toggle button (`md:hidden`) with accessible `aria-label`, `aria-expanded`, and `aria-controls`.
+  - Responsive brand logo truncation (`text-sm sm:text-base truncate max-w-[175px] sm:max-w-none`) prevents header wrapping on ultra-narrow screens (e.g. 320px–375px).
+  - Desktop nav links and desktop public utilities cleanly hide on mobile screens (`hidden md:flex`, `hidden md:block`), maintaining an uncluttered header bar (`Logo` + `Sign In` / `Avatar` + `[☰]`).
+  - Added mobile navigation drawer panel (`id="mobile-navigation-menu"`) rendered directly below the sticky header with themed background (`var(--bg-surface)`):
+    - **Navigation Links**: `Dashboard`, `Documents`, `RAG Chat`, `Quiz` with active route indicator.
+    - **User Guide Button**: Opens `UserGuideModal` and immediately closes the mobile drawer.
+    - **3-Theme Picker**: 3-button selector (`Light ☀️`, `Dark 🌙`, `Green 🌿`) directly switchable with 1 tap.
+    - **Auth Controls**:
+      - Logged-out state: Full-width `"Sign In"` button linking to `/login`.
+      - Logged-in state: User identity header (`displayName` / Avatar), `"Profile"` link, and destructive `"Sign Out"` action button.
+  - Robust drawer dismissal handlers:
+    - Route change listener (`pathname` change closes drawer).
+    - Navigation link click (`onClick={() => setMobileMenuOpen(false)}`).
+    - Escape key listener (`handleKeyDown` on `window`).
+    - Outside-click listener (`handleMouseDown` on `window`).
+
+### 3. Three-Theme & Accessibility Verification
+- **Three Themes Tested**: `light`, `dark`, and `green`.
+  - All mobile drawer elements, hamburger button, navigation links, and theme toggle buttons inherit existing CSS variables (`--bg-surface`, `--bg-surface-2`, `--border`, `--text-primary`, `--text-secondary`, `--accent`, `--accent-surface`, `--accent-text`).
+  - Contrast and focus rings (`focus-visible:ring-2`) maintained across all three themes.
+- **Accessibility**:
+  - Hamburger toggle has dynamic `aria-label` ("Open navigation menu" / "Close navigation menu") and `aria-expanded`.
+  - Keyboard accessible: `Escape` closes the drawer; `Tab` moves through drawer items cleanly.
+  - Active links convey state via both styling and semantic visual indicators.
+
+### 4. Actual Tests Executed & Results
+1. **Desktop Landing Page Inspection**:
+   - Center `"Read User Guide"` button completely removed from hero section: **CONFIRMED**.
+   - Spacing, alignment, and 4 CTA buttons (`Get Started ->`, `Upload Notes`, `Ask Questions`, `Practice Quiz`): **CONFIRMED**.
+   - Navbar User Guide button opens `UserGuideModal` and closes cleanly: **CONFIRMED**.
+2. **Logged-Out Route Protection Test**:
+   - Clicking `"Dashboard"` -> redirects to `/login`: **CONFIRMED**.
+   - Clicking `"Documents"` -> redirects to `/login`: **CONFIRMED**.
+   - Clicking `"RAG Chat"` -> redirects to `/login`: **CONFIRMED**.
+   - Clicking `"Quiz"` -> redirects to `/login`: **CONFIRMED**.
+3. **Mobile Viewport Navigation Test (375x700)**:
+   - Resized browser to 375x700 mobile viewport.
+   - Zero horizontal scrollbar, zero element overflow: **CONFIRMED**.
+   - Desktop links hidden; hamburger button visible: **CONFIRMED**.
+   - Tapping hamburger button opens drawer: **CONFIRMED**.
+   - Switching themes (Green, Dark, Light) directly within drawer: **CONFIRMED**.
+   - Tapping User Guide in drawer opens modal and closes drawer: **CONFIRMED**.
+   - Pressing `Escape` key closes drawer: **CONFIRMED**.
+   - Tapping `"Dashboard"` in drawer redirects to `/login` and closes drawer: **CONFIRMED**.
+4. **Logged-In Mobile Navigation Test**:
+   - Logged in via Guest authentication.
+   - Mobile drawer displays user identity badge, `"Profile"`, and `"Sign Out"`: **CONFIRMED**.
+   - Tapping `"Documents"` navigates to `/documents` and closes drawer: **CONFIRMED**.
+   - Tapping `"Sign Out"` clears authentication and returns user to `/`: **CONFIRMED**.
+5. **Frontend Lint & Build Checks**:
+   - `npm run lint`: **0 errors, 0 warnings**.
+   - `npm run build`: **Compiled successfully; 10/10 static pages generated with 0 errors**.
+6. **Remaining Issues / Blockers**: None. All requirements satisfied and verified.
+
+
 
 
 

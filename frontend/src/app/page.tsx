@@ -14,14 +14,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getToken } from "../../lib/api";
-import UserGuideModal from "../../components/UserGuideModal";
 
 export default function Home() {
   const router = useRouter();
-  const [showGuide, setShowGuide] = useState(false);
 
   // Redirect authenticated user to /dashboard immediately
   useEffect(() => {
@@ -31,22 +29,22 @@ export default function Home() {
   }, [router]);
 
   return (
-    <main className="flex-1 flex flex-col items-center justify-center px-4 py-16 sm:px-6 lg:px-8 max-w-5xl mx-auto text-center page-enter">
+    <main className="flex-1 flex flex-col items-center justify-center px-4 py-12 sm:py-16 sm:px-6 lg:px-8 max-w-5xl mx-auto text-center page-enter w-full">
       {/* Hero heading */}
       <h1
-        className="text-4xl sm:text-6xl font-extrabold tracking-tight mb-6"
+        className="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight mb-4 sm:mb-6"
         style={{ color: "var(--text-primary)" }}
       >
         Learn Smarter with Your{" "}
         <span
-          className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent"
+          className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent inline-block"
         >
           Own Study Material
         </span>
       </h1>
 
       <p
-        className="max-w-2xl text-lg sm:text-xl mb-10"
+        className="max-w-2xl text-base sm:text-lg lg:text-xl mb-8 sm:mb-10 px-2 leading-relaxed"
         style={{ color: "var(--text-secondary)" }}
       >
         Upload lecture notes, PDFs, and textbooks. Ask grounded questions
@@ -54,37 +52,29 @@ export default function Home() {
       </p>
 
       {/* CTA buttons */}
-      <div className="flex flex-wrap items-center justify-center gap-3.5 mb-16">
+      <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-3.5 mb-12 sm:mb-16 w-full max-w-lg sm:max-w-none">
         <Link
           href="/login"
-          className="px-6 py-3 rounded-xl font-semibold text-sm text-white shadow-md transition-all hover:brightness-105 active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
+          className="w-full sm:w-auto px-6 py-3 rounded-xl font-semibold text-sm text-white shadow-md transition-all hover:brightness-105 active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none text-center"
           style={{ background: "var(--accent)" }}
         >
           Get Started →
         </Link>
-        <button
-          type="button"
-          onClick={() => setShowGuide(true)}
-          className="hero-cta-btn px-6 py-3 rounded-xl font-semibold text-sm shadow-sm transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none flex items-center gap-2 cursor-pointer"
-        >
-          <span>📖</span>
-          <span>Read User Guide</span>
-        </button>
         <Link
           href="/documents"
-          className="hero-cta-btn px-5 py-3 rounded-xl font-semibold text-sm shadow-sm transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
+          className="hero-cta-btn w-full sm:w-auto px-5 py-3 rounded-xl font-semibold text-sm shadow-sm transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none text-center"
         >
           Upload Notes
         </Link>
         <Link
           href="/chat"
-          className="hero-cta-btn px-5 py-3 rounded-xl font-semibold text-sm shadow-sm transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
+          className="hero-cta-btn w-full sm:w-auto px-5 py-3 rounded-xl font-semibold text-sm shadow-sm transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none text-center"
         >
           Ask Questions
         </Link>
         <Link
           href="/quiz"
-          className="hero-cta-btn px-5 py-3 rounded-xl font-semibold text-sm shadow-sm transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
+          className="hero-cta-btn w-full sm:w-auto px-5 py-3 rounded-xl font-semibold text-sm shadow-sm transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none text-center"
         >
           Practice Quiz
         </Link>
@@ -140,9 +130,6 @@ export default function Home() {
           </div>
         ))}
       </div>
-
-      {/* User Guide Modal for unauthenticated visitors */}
-      {showGuide && <UserGuideModal onClose={() => setShowGuide(false)} />}
     </main>
   );
 }
