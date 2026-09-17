@@ -32,6 +32,7 @@ const SECTIONS: Section[] = [
     title: "Getting Started",
     items: [
       { desc: "Personal AI Learning Assistant helps you master your course materials through grounded Q&A and adaptive quizzes." },
+      { term: "PDF Upload Limit", desc: "PDF files up to 20 MB are supported." },
       { desc: "Uploading study material: Upload lecture notes, textbooks, or course handouts in PDF format (up to 20 MB) on the Documents page." },
       { desc: "Using Chat: Ask natural-language questions about your notes and receive factual, grounded answers with exact page references." },
       { desc: "Using Quiz: Test your knowledge with auto-generated multiple-choice questions graded deterministically to track your progress." },
@@ -44,8 +45,9 @@ const SECTIONS: Section[] = [
     title: "Documents",
     items: [
       { term: "Document", desc: "A PDF file containing your study notes, textbook chapters, or lecture slides uploaded to your account." },
+      { term: "PDF Upload Limit", desc: "PDF files up to 20 MB are supported. Only text-based PDF documents are accepted." },
       { term: "Processing", desc: "Your document is being read, analyzed, and prepared for search and quiz generation. This typically takes 30–120 seconds." },
-      { term: "Ready", desc: "Preparation complete. The document is fully ready for grounded RAG Chat and Quiz generation." },
+      { term: "Ready", desc: "Preparation complete. The document is fully ready for grounded Chat and Quiz generation." },
       { term: "Failed", desc: "The document could not be processed (e.g. image-only scan without selectable text or corrupt file). Try uploading a clean text-based PDF." },
       { term: "Subject / Course", desc: "An optional subject tag (such as DBMS or Operating Systems) to organize your notes and guide generated quizzes." },
     ],
@@ -60,6 +62,8 @@ const SECTIONS: Section[] = [
       { term: "Citation", desc: "A verifiable reference pointing directly to the specific page number(s) in your uploaded document where the fact was found." },
       { term: "Source", desc: "A clickable reference badge showing the document name and verified page number for each retrieved fact." },
       { term: "Chat Session", desc: "A conversation thread associated with a document. You can maintain multiple sessions and delete any session when no longer needed." },
+      { term: "Session Rename", desc: "Click the pencil icon next to any chat session title in the sidebar to rename it. Press Enter or click the checkmark to save. Your message history and citations remain completely preserved." },
+      { term: "Quiz from Chat", desc: "Click 'Test yourself on this topic' at the bottom of any active conversation to quickly start a practice quiz on the discussed subject." },
     ],
   },
   {
@@ -77,6 +81,7 @@ const SECTIONS: Section[] = [
       { term: "60–79%", desc: "Good understanding — solid foundation, with room for targeted revision." },
       { term: "Below 60%", desc: "Needs practice / Weak Topic — requires additional study and practice." },
       { term: "Rename Topic", desc: "You can rename any quiz topic in Quiz History using the pencil icon without losing your questions or attempt history." },
+      { term: "Show Incorrect Only", desc: "After submitting a quiz, toggle this filter to review only questions you answered incorrectly. Disabling the filter restores all questions. It helps you focus on errors and does not change your score or recorded attempt." },
     ],
   },
   {
@@ -99,6 +104,16 @@ const SECTIONS: Section[] = [
       { term: "Delete Chat Session", desc: "Permanently deletes the selected conversation thread and its message history. Your document, other chat sessions, and quizzes remain intact." },
       { term: "Confirmation Required", desc: "All delete actions require explicit user confirmation to prevent accidental loss of study history or notes." },
       { desc: "Quizzes are tied to their source document and are permanently cleaned up when the parent document is deleted." },
+    ],
+  },
+  {
+    id: "interface",
+    emoji: "🔔",
+    title: "Interface & Feedback",
+    items: [
+      { term: "Toast Notifications", desc: "Clear status notifications appear at the top-right to provide instant feedback for actions like uploading files, saving changes, renaming sessions, or deleting items." },
+      { term: "Three Themes", desc: "Choose between Light ☀️, Dark 🌙, and Green 🌿 themes at any time from the theme selector in the Navbar or profile menu." },
+      { term: "Mobile Navigation", desc: "All study tools, documents, chats, quizzes, and account controls are fully accessible on smartphones and tablets via the responsive mobile menu." },
     ],
   },
   {

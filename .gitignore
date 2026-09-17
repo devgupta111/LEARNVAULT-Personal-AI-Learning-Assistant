@@ -6,12 +6,10 @@
 .env
 .env.*
 !.env.example
-!.env.gitkeep
 *.env
 **/.env
 **/.env.*
 !**/.env.example
-!**/.env.gitkeep
 
 # Local Databases — NEVER commit local DB with student data
 *.db
@@ -26,6 +24,7 @@ data/qdrant_local/
 data/qdrant_local*
 
 # Private Notes & Reference
+project-reference/
 Do not read/
 Donotread*
 

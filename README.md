@@ -1,225 +1,246 @@
 # Personal AI Learning Assistant
 
-A full-stack RAG application that lets students upload lecture notes and PDFs,
-ask natural-language questions about their own study material, and receive
-grounded answers with page-level citations.
+An agentic, full-stack learning assistant that enables students to upload lecture notes and textbooks, ask natural-language questions grounded strictly in their course material, receive factual answers with exact page-level citations, and master weak topics through adaptive auto-graded diagnostic quizzes.
 
 ---
 
-## Current Status — Day 1: Backend Foundation + PDF Upload + Extraction
-
-What is implemented today:
-
-- FastAPI backend with health endpoint
-- PostgreSQL documents table
-- PDF upload endpoint with validation
-- Page-by-page text extraction using PyMuPDF
-- Scanned-page detection
-- Document processing status (PROCESSING → READY / FAILED)
-- Document listing and status endpoints
-- Tests for all of the above
-
-What is NOT implemented yet (coming in later days):
-
-- Text chunking
-- Embeddings and Qdrant
-- RAG question answering
-- Agents
-- Authentication
-- Frontend
-
----
-
-## Project Structure
+## Architecture Overview
 
 ```
-personal-ai-learning-assistant/
-├── frontend/                  Next.js app (Day 5+)
-├── backend/
-│   ├── app/
-│   │   ├── main.py            FastAPI entry point
-│   │   ├── config.py          Environment-variable settings
-│   │   ├── api/
-│   │   │   └── documents.py   Upload and status endpoints
-│   │   ├── db/
-│   │   │   ├── base.py        SQLAlchemy declarative base
-│   │   │   └── database.py    Engine and session factory
-│   │   ├── models/
-│   │   │   └── document.py    Documents ORM model
-│   │   ├── schemas/
-│   │   │   └── document.py    Pydantic request/response schemas
-│   │   └── services/
-│   │       ├── pdf_service.py      PyMuPDF extraction + scan detection
-│   │       └── document_service.py DB operations for documents
-│   ├── tests/
-│   │   ├── conftest.py         Pytest fixtures (SQLite, isolated uploads)
-│   │   ├── test_pdf_service.py Unit tests for PDF extraction
-│   │   └── test_documents.py   API integration tests
-│   ├── requirements.txt
-│   └── Dockerfile
-├── data/
-│   ├── uploads/               Uploaded PDFs (not committed)
-│   └── test_documents/        Test PDFs for manual testing
-├── .env                       Local secrets (not committed)
-├── .env.example               Template — commit this, not .env
-├── docker-compose.yml         PostgreSQL service
-└── README.md
+[ Student PDF Notes ]
+         │
+         ▼
+[ PyMuPDF Extraction ] ──► [ Boundary-Aware Text Cleaning ]
+                                     │
+                                     ▼
+                      [ Hierarchical Parent-Child Chunking ]
+                        ├─ Parent: 2,800 chars (broad context)
+                        └─ Child:    800 chars (dense semantic retrieval)
+                                     │
+                                     ▼
+                      [ Local all-MiniLM-L6-v2 Embeddings ]
+                                     │
+                                     ▼
+                      [ Qdrant Vector DB Ingestion ]
+                                     │
+┌────────────────────────────────────┴────────────────────────────────────┐
+│                    FOUR BOUNDED AGENTS & CORE RAG                       │
+│                                                                         │
+│  1. Query Router & Rewriter Agent (LLM)                                │
+│     └─ Fast-path greeting / direct chat OR multi-turn query rewriting   │
+│                                                                         │
+│  2. Corrective RAG (CRAG) Agent (LLM)                                  │
+│     └─ Evaluates retrieval relevance (score < 0.35); max 1 query retry  │
+│                                                                         │
+│  3. Hallucination & Citation Grader (LLM)                              │
+│     └─ Verifies answer grounding vs retrieved parent evidence          │
+│     └─ Max 1 answer regeneration; safe refusal on double failure        │
+│     └─ Streams only verified tokens via Server-Sent Events (SSE)        │
+│                                                                         │
+│  4. Adaptive Diagnostic Quiz Agent (LLM + Deterministic Engine)        │
+│     └─ Generates 4-option MCQs grounded in student notes               │
+│     └─ 100% deterministic grading (backend equality check)             │
+│     └─ Weak topic detection: accuracy < 60% with targeted practice      │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Setup
+## Core Features
 
-### 1. Python environment
+- **Document Management**:
+  - Drag-and-drop PDF upload with filename display, formatted file size, and file validation.
+  - **Upload Limit**: Supports text-based PDF files up to **20 MB**.
+  - Asynchronous extraction and processing pipeline (`PROCESSING` ➔ `READY` / `FAILED`).
+  - Cascading deletion permanently cleaning database records, physical uploads, and Qdrant vector points with strict user authorization.
 
+- **Grounded Conversational RAG**:
+  - Top-15 Qdrant vector retrieval filtered by authenticated `user_id` and `document_id`.
+  - FlashRank cross-encoder reranking (`ms-marco-TinyBERT-L-2-v2`) selecting top 4 parent contexts.
+  - Strict grounding: answers exclusively from uploaded documents; refuses when evidence is insufficient.
+  - Page-level citations displayed as clean clickable badges (`[Source N] <file> · Page X`).
+  - Inline Chat Session Rename with persistent database updates and full message history retention.
+  - **Quiz from Chat**: One-click transition from conversation to targeted quiz practice.
+
+- **Adaptive Diagnostic Quizzes**:
+  - Multiple-choice questions (4 options per question) generated from course notes.
+  - **Deterministic Auto-Grading**: Exact string comparison (`submitted == correct`) calculated by backend code without LLM scoring bias.
+  - **Score Bands & Diagnostics**:
+    - **Strong**: 80%–100%
+    - **Good**: 60%–79%
+    - **Needs Practice / Weak**: `< 60%` (explicit rule: 59% is weak, 60% is not weak).
+  - Inline quiz topic rename in Quiz History table.
+  - **Show Incorrect Answers Only**: Post-submission toggle filter for targeted revision without modifying scores or stored attempts.
+
+- **Security & Data Isolation**:
+  - Authentication via Google Identity Services (GIS) ("Continue with Google") and local/guest authentication.
+  - Stateless Bearer tokens validating user identity across all endpoints.
+  - Strict cross-user data isolation: users can only view, query, or delete their own documents, sessions, and quizzes.
+
+- **Responsive Design & 3 Themes**:
+  - Full-featured **Light ☀️**, **Dark 🌙**, and **Green 🌿** themes persisted across reloads without theme flash.
+  - Fully responsive mobile experience with collapsible mobile navigation drawer.
+  - Universal student-friendly **User Guide** modal accessible from Navbar, profile menu, and mobile drawer.
+  - Unified theme-aware toast notification system.
+
+---
+
+## Technology Stack
+
+| Layer | Technology | Description |
+| :--- | :--- | :--- |
+| **Frontend** | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4 | Responsive UI, SSE token streaming, theme engine |
+| **Backend** | FastAPI, Python 3.10+, Pydantic v2, SQLAlchemy | Async REST APIs, SSE streaming, authentication |
+| **Vector DB** | Qdrant | 384-dimensional dense semantic search (Docker or local embedded) |
+| **Database** | PostgreSQL / SQLite | User profiles, document metadata, chat history, quiz attempts |
+| **Embeddings** | `sentence-transformers` (`all-MiniLM-L6-v2`) | Runs 100% locally and offline (384-dim float vectors) |
+| **Reranker** | FlashRank (`ms-marco-TinyBERT-L-2-v2`) | Local cross-encoder reranking without external API calls |
+| **LLM Engine** | Groq API (`openai/gpt-oss-120b`, `llama-3.1-8b-instant`) | Fast inference for RAG generation and bounded agents |
+| **PDF Engine** | PyMuPDF (`fitz`) | High-fidelity page extraction and scan detection |
+
+---
+
+## Local Setup Guide
+
+### 1. Prerequisites
+- **Python**: 3.10 or higher
+- **Node.js**: 18 or higher (with npm)
+- **Docker** *(optional)*: Docker Desktop for running PostgreSQL and Qdrant containers
+
+> **Note on Zero-Configuration Local Fallbacks**:
+> If PostgreSQL or Docker is not installed, the application automatically falls back to:
+> - SQLite database at `data/ai_learning_local.db`
+> - Embedded local Qdrant vector storage at `data/qdrant_local/`
+> You can run and test the complete application without Docker or PostgreSQL.
+
+---
+
+### 2. Environment Configuration
+Clone the repository and create your local `.env` file:
+
+```powershell
+# Copy the public example template to your private local .env
+Copy-Item .env.example .env     # Windows PowerShell
+cp .env.example .env            # macOS / Linux
+```
+
+Open `.env` and add your Groq API key:
+```env
+RAG_API_KEY=your_groq_api_key_here
+```
+*(Get a free API key at [console.groq.com](https://console.groq.com/keys). All 4 agents use `RAG_API_KEY` as a fallback if their dedicated keys are left blank.)*
+
+---
+
+### 3. Backend Setup
+
+```powershell
+# Navigate to backend directory
+cd backend
+
+# Create and activate Python virtual environment
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1    # Windows
+source .venv/bin/activate       # macOS / Linux
+
+# Install backend dependencies
+pip install -r requirements.txt
+
+# Start the FastAPI server
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+Backend will be available at: `http://127.0.0.1:8000` (API documentation at `http://127.0.0.1:8000/docs`).
+
+---
+
+### 4. Frontend Setup
+
+In a separate terminal:
+```powershell
+# Navigate to frontend directory
+cd frontend
+
+# Install frontend dependencies
+npm install
+
+# Start the Next.js development server
+npm run dev
+```
+Frontend will be available at: `http://localhost:3000`.
+
+---
+
+### 5. Docker Infrastructure *(Optional)*
+
+To run PostgreSQL and Qdrant in Docker containers:
+```powershell
+# In the project root
+docker compose up -d
+```
+- PostgreSQL: `localhost:5432` (`ai_learning_db`)
+- Qdrant: `localhost:6333` / Web UI: `http://localhost:6333/dashboard`
+
+---
+
+## Running Automated Tests
+
+### Backend Test Suite (Pytest)
+The backend contains 237 automated regression and unit tests:
 ```powershell
 cd backend
-py -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-### 2. Environment variables
-
-Copy the example file and fill in your PostgreSQL credentials:
-
-```powershell
-copy .env.example .env
-```
-
-Edit `.env`:
-
-```env
-DATABASE_URL=postgresql+psycopg2://postgres:YOUR_PASSWORD@localhost:5432/ai_learning_db
-UPLOAD_DIR=data/uploads
-MAX_FILE_SIZE_MB=20
-```
-
-### 3. PostgreSQL
-
-**Option A — Docker (recommended)**
-
-```powershell
-docker-compose up -d
-```
-
-This starts PostgreSQL 16 on port 5432 with:
-- User: `postgres`
-- Password: `postgres`
-- Database: `ai_learning_db`
-
-**Option B — Local PostgreSQL**
-
-If you have PostgreSQL installed locally:
-
-```sql
--- Run in psql
-CREATE DATABASE ai_learning_db;
-```
-
-Update `DATABASE_URL` in `.env` with your credentials.
-
-### 4. Start the backend
-
-```powershell
-# From the backend/ directory, with venv activated
-uvicorn app.main:app --reload
-```
-
-The server will:
-- Connect to PostgreSQL
-- Create the `documents` table if it does not exist
-- Start on http://127.0.0.1:8000
-
----
-
-## Verify It Works
-
-```
-GET  http://127.0.0.1:8000/health
-→   {"status": "ok"}
-
-GET  http://127.0.0.1:8000/docs
-→   Swagger UI showing all endpoints
-```
-
----
-
-## API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Health check |
-| `POST` | `/documents/upload` | Upload a PDF |
-| `GET` | `/documents/` | List all documents |
-| `GET` | `/documents/{id}` | Get document status |
-
-### Upload a PDF
-
-```bash
-curl -X POST http://127.0.0.1:8000/documents/upload \
-  -F "file=@your_notes.pdf" \
-  -F "subject=Operating Systems"
-```
-
-Response (HTTP 202):
-
-```json
-{
-  "document_id": "3f7a1b2c-...",
-  "status": "PROCESSING"
-}
-```
-
-### Check status
-
-```bash
-curl http://127.0.0.1:8000/documents/3f7a1b2c-...
-```
-
-Response when ready:
-
-```json
-{
-  "document_id": "3f7a1b2c-...",
-  "filename": "your_notes.pdf",
-  "subject": "Operating Systems",
-  "status": "READY",
-  "page_count": 12,
-  "error_message": null,
-  "created_at": "...",
-  "updated_at": "..."
-}
-```
-
----
-
-## Run Tests
-
-```powershell
-# From backend/ directory, with venv activated
+.\.venv\Scripts\Activate.ps1
 pytest tests/ -v
 ```
+Test suites cover:
+- PDF extraction and scanned-page detection (`test_pdf_service.py`)
+- Cleaning, chunking, and metadata (`test_cleaning_service.py`, `test_chunking_service.py`)
+- Embeddings and Qdrant lifecycle (`test_embedding_service.py`, `test_qdrant_service.py`)
+- Core RAG, refusal, and history (`test_chat.py`)
+- Router & CRAG Agents (`test_day5_agents.py`)
+- Grader & Adaptive Quiz Agents (`test_day6.py`)
+- Auth, SSE streaming, and cross-user security (`test_day7.py`)
+- Cascading deletion and session/topic rename (`test_deletion_and_rename.py`)
 
-Tests use SQLite — no PostgreSQL needed to run tests.
+### Frontend Build & Type Check
+```powershell
+cd frontend
+npm run lint       # ESLint validation
+npm run build      # TypeScript validation + Next.js production build
+```
 
 ---
 
-## Document Status Values
+## Bounded 4-Agent Architecture Specification
 
-| Status | Meaning |
-|--------|---------|
-| `PROCESSING` | Upload accepted, extraction in progress |
-| `READY` | Text extracted successfully |
-| `FAILED` | Extraction failed (scanned PDF, corrupted file, etc.) |
+1. **Agent 1: Query Router & Rewriter (`query_router_service.py`)**:
+   - Executes a single structured LLM classification.
+   - Fast-path regex immediately routes social greetings to direct chat without LLM delay.
+   - Rewrites follow-up questions to resolve pronouns against recent history before vector retrieval.
+2. **Agent 2: Corrective RAG (CRAG) Agent (`crag_service.py`)**:
+   - Triggered only when initial retrieval score is below `RERANK_THRESHOLD` (0.35).
+   - Generates exactly **ONE** alternative search query.
+   - If retry evidence remains weak, returns the unified refusal without looping.
+3. **Agent 3: Hallucination & Citation Grader (`grader_service.py`)**:
+   - Evaluates LLM draft answers against retrieved parent chunks.
+   - Grader FAIL triggers exactly **ONE** answer regeneration using the **same context**.
+   - If regeneration fails, safely returns the refusal message.
+   - **Crucial Safety Rule**: Unverified answers are NEVER streamed token-by-token.
+4. **Agent 4: Adaptive Quiz & Diagnostic Agent (`quiz_service.py`)**:
+   - Generates grounded 4-option MCQs from student notes.
+   - Identifies weak topics (`accuracy < 60%`) and offers targeted revision quizzes.
+   - Auto-grading is 100% deterministic (`submitted == correct`) calculated in backend code.
 
 ---
 
-## Notes
+## Security & Privacy Guidelines
 
-- `user_id` is currently a development placeholder (`"dev-user"`).
-  JWT authentication will be added in a later phase.
-- Uploaded PDFs are saved as `data/uploads/{document_id}.pdf`.
-  The original filename is preserved in the database.
-- Scanned pages (fewer than 50 extracted characters) are flagged with
-  `needs_ocr: true`. OCR integration is a later phase.
+- **No Secrets in Repository**: `.env` is ignored by `.gitignore`. Real API keys, passwords, and private tokens must never be committed.
+- **Data Isolation**: All database queries and vector searches strictly enforce `user_id == authenticated_user`.
+- **Read-Only Profile Fields**: User emails are immutable and read-only.
+- **Client Identification**: Google Identity Services uses Web Client IDs (`GOOGLE_CLIENT_ID`) configured with authorized origins.
+
+---
+
+## License
+
+This project is licensed under the MIT License — see the repository for details.
