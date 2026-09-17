@@ -1,8 +1,8 @@
-# Personal AI Learning Assistant --- Project Brain (V4)
+# LearnVault --- Project Brain (V4)
 
 ## 0. Project Goal
 
-Build a full-stack RAG-based Personal AI Learning Assistant where a
+Build LearnVault, a full-stack RAG-based AI learning assistant where a
 student can upload lecture notes, PDFs, and textbooks, ask
 natural-language questions over their own study material, receive
 grounded answers with page citations, and generate quizzes with
@@ -64,8 +64,8 @@ NOT agents.
 # 2. High-Level System
 
 ``` text
-                         PERSONAL AI LEARNING ASSISTANT
-                                      |
+                                    LEARNVAULT
+                                       |
                    +------------------+------------------+
                    |                                     |
                    v                                     v
@@ -1099,7 +1099,7 @@ Unless a real requirement appears, do not add:
 
 # 13. Recruiter Explanation
 
-> I built a full-stack AI learning assistant that lets students upload
+> I built LearnVault, a full-stack AI learning assistant that lets students upload
 > their lecture notes and textbooks and ask questions over their own
 > study material. Documents are processed asynchronously with Celery,
 > extracted page-by-page with PyMuPDF, hierarchically chunked, embedded,
@@ -2253,6 +2253,30 @@ All updated components were verified across all three supported themes:
 - **Backend Test Suite (`pytest tests/ -v`)**: **223 passed, 14 skipped, 0 failed** in 60.80s (100% pass rate).
 - **Frontend Production Build (`npm run build`)**: Compiled successfully in Turbopack with **0 errors**; 10/10 static routes generated.
 - **Working Tree**: Clean, verified, ready for commit and push.
+
+------------------------------------------------------------------------
+
+# 31. Official Project Name & Branding Transition — LearnVault
+
+### 1. Branding Requirement & Scope Lock
+- **Official Brand Name**: **LearnVault** (exact capitalization and spelling).
+- **Scope**: User-facing branding updates across landing page, navigation header, login page, User Guide, metadata, README, and project documentation.
+- **Strictly Unchanged Technical Identifiers**:
+  - Qdrant collection name (`learning_assistant`) preserved.
+  - Database name (`ai_learning_db` / `data/ai_learning_local.db`) preserved.
+  - API routes and endpoint paths preserved.
+  - Generic technical descriptions (e.g., "AI learning assistant for students") preserved where appropriate.
+  - Locked 4-agent RAG architecture, deterministic grading, and GIS auth logic preserved.
+
+### 2. Branding Updates Implemented
+- **Frontend Navbar (`Navbar.tsx`)**: Logo brand text updated to `LearnVault`.
+- **Landing Page (`page.tsx`)**: Added `LearnVault` pill badge in hero section and updated introductory copy.
+- **Root Layout & Metadata (`layout.tsx`)**: Document title updated to `LearnVault` with descriptive metadata.
+- **Login Page (`login/page.tsx`)**: Heading updated to `"Welcome to LearnVault"`.
+- **User Guide Modal (`UserGuideModal.tsx`)**: Introductory guide item updated to `"LearnVault helps you master your course materials..."` and modal footer updated to `"LearnVault — Help"`.
+- **Backend Entrypoint (`main.py`)**: FastAPI title and root message updated to `"LearnVault API"`.
+- **Documentation (`README.md`, `.env.example`, `brain.md`)**: Updated titles and branding references.
+
 
 
 
