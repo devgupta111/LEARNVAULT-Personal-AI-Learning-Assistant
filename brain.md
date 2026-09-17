@@ -1,4 +1,4 @@
-# LearnVault --- Project Brain (V4)
+# LEARNVAULT — Personal AI Learning Assistant --- Project Brain (V4)
 
 ## 0. Project Goal
 

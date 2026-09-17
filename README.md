@@ -1,4 +1,4 @@
-# LearnVault
+# LEARNVAULT — Personal AI Learning Assistant
 
 An agentic, full-stack learning assistant that enables students to upload lecture notes and textbooks, ask natural-language questions grounded strictly in their course material, receive factual answers with exact page-level citations, and master weak topics through adaptive auto-graded diagnostic quizzes.
 
