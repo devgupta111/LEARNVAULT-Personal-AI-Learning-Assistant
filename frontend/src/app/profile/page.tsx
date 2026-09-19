@@ -228,14 +228,7 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={startEditing}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-white transition-all shadow-sm active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
-                style={{ background: "var(--accent)" }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = "var(--accent-hover)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = "var(--accent)";
-                }}
+                className="btn-primary px-4 py-2 rounded-xl text-xs font-semibold shadow-sm active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
               >
                 Edit Profile
               </button>
@@ -244,20 +237,7 @@ export default function ProfilePage() {
             <button
               type="button"
               onClick={handleLogout}
-              className="px-4 py-2 rounded-xl text-xs font-medium transition-all border active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
-              style={{
-                background: "var(--bg-surface-2)",
-                color: "var(--text-secondary)",
-                borderColor: "var(--border)",
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)";
-                (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.background = "var(--bg-surface-2)";
-                (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)";
-              }}
+              className="btn-secondary px-4 py-2 rounded-xl text-xs font-medium active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
             >
               Sign Out
             </button>
@@ -365,7 +345,7 @@ export default function ProfilePage() {
                 {/* Auth Provider (Informational) */}
                 <div>
                   <span className="block text-xs font-semibold mb-1" style={{ color: "var(--text-primary)" }}>
-                    Authentication Provider
+                    Sign-in Method
                   </span>
                   <div className="text-xs font-medium inline-flex items-center gap-1.5" style={{ color: "var(--text-secondary)" }}>
                     <span className="w-2 h-2 rounded-full" style={{ background: "var(--accent)" }} />
@@ -379,14 +359,7 @@ export default function ProfilePage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-5 py-2.5 rounded-xl text-xs font-semibold text-white transition-all shadow-sm disabled:opacity-50 flex items-center gap-2 active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
-                  style={{ background: "var(--accent)" }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "var(--accent-hover)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "var(--accent)";
-                  }}
+                  className="btn-primary px-5 py-2.5 rounded-xl text-xs font-semibold shadow-sm disabled:opacity-50 flex items-center gap-2 active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
                 >
                   {saving ? (
                     <>
@@ -402,20 +375,7 @@ export default function ProfilePage() {
                   type="button"
                   onClick={cancelEditing}
                   disabled={saving}
-                  className="px-4 py-2.5 rounded-xl text-xs font-medium transition-all border active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
-                  style={{
-                    background: "var(--bg-surface-2)",
-                    color: "var(--text-secondary)",
-                    borderColor: "var(--border)",
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)";
-                    (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "var(--bg-surface-2)";
-                    (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)";
-                  }}
+                  className="btn-secondary px-4 py-2.5 rounded-xl text-xs font-medium active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
                 >
                   Cancel
                 </button>
@@ -465,7 +425,7 @@ export default function ProfilePage() {
               {/* Authentication Provider */}
               <div className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                 <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-                  Authentication Provider
+                  Sign-in Method
                 </span>
                 <span
                   className="text-xs font-medium inline-flex items-center gap-1.5"

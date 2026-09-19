@@ -45,7 +45,7 @@ import UserGuideModal from "./UserGuideModal";
 const NAV_LINKS = [
   { name: "Dashboard", href: "/dashboard" },
   { name: "Documents", href: "/documents" },
-  { name: "RAG Chat", href: "/chat" },
+  { name: "Chat", href: "/chat" },
   { name: "Quiz", href: "/quiz" },
 ];
 
@@ -77,6 +77,32 @@ export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const hamburgerBtnRef = useRef<HTMLButtonElement>(null);
+
+  // LearnVault logo click animation state
+  const [vaultUnlocked, setVaultUnlocked] = useState(false);
+  const vaultTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleLogoClick = () => {
+    if (vaultTimerRef.current) {
+      clearTimeout(vaultTimerRef.current);
+    }
+    // Retrigger cleanly even on rapid repeated clicks
+    setVaultUnlocked(false);
+    requestAnimationFrame(() => {
+      setVaultUnlocked(true);
+      vaultTimerRef.current = setTimeout(() => {
+        setVaultUnlocked(false);
+      }, 880);
+    });
+  };
+
+  useEffect(() => {
+    return () => {
+      if (vaultTimerRef.current) {
+        clearTimeout(vaultTimerRef.current);
+      }
+    };
+  }, []);
 
   // Read auth state client-side only and listen for real-time profile updates
   useEffect(() => {
@@ -225,60 +251,136 @@ export default function Navbar() {
         WebkitBackdropFilter: "blur(12px)",
       }}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-4">
         {/* ── Left: Brand Logo (Dynamic Destination) & Main Navigation ── */}
         <div className="flex items-center gap-6 min-w-0">
           <Link
             href={logoHref}
-            className="flex items-center gap-2.5 font-bold text-base shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 rounded-lg transition-transform active:scale-[0.98]"
+            onClick={handleLogoClick}
+            className="relative flex items-center gap-2.5 font-bold text-base shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 rounded-lg transition-transform active:scale-[0.98]"
             style={{ color: "var(--text-primary)" }}
             title={currentUser ? "Dashboard" : "Home"}
           >
-            <span
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-black text-white shadow-sm shrink-0"
-              style={{ background: "var(--accent)" }}
-            >
-              AI
+            {/* Logo Badge with Knowledge Vault Unlock Animation */}
+            <span className="relative flex items-center justify-center shrink-0">
+              <span
+                className={`w-8 h-8 rounded-lg flex items-center justify-center text-white shadow-sm shrink-0 transition-transform ${
+                  vaultUnlocked ? "vault-badge-animating" : ""
+                }`}
+                style={{ background: "var(--accent)" }}
+                aria-hidden="true"
+              >
+                {/* Vault/book SVG icon — represents knowledge storage */}
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 18 18"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden="true"
+                >
+                  {/* Book spine */}
+                  <rect x="3" y="2" width="2" height="14" rx="1" fill="white" fillOpacity="0.9" />
+                  {/* Book cover */}
+                  <rect x="5" y="2" width="10" height="14" rx="1.5" fill="white" fillOpacity="0.25" stroke="white" strokeWidth="1" strokeOpacity="0.7" />
+                  {/* Page lines */}
+                  <line x1="7.5" y1="6" x2="13" y2="6" stroke="white" strokeWidth="1" strokeLinecap="round" strokeOpacity="0.9" />
+                  <line x1="7.5" y1="8.5" x2="13" y2="8.5" stroke="white" strokeWidth="1" strokeLinecap="round" strokeOpacity="0.9" />
+                  <line x1="7.5" y1="11" x2="11" y2="11" stroke="white" strokeWidth="1" strokeLinecap="round" strokeOpacity="0.7" />
+                </svg>
+              </span>
+
+              {/* Textbook + Vault Unlock Pages (active on deliberate click only) */}
+              {vaultUnlocked && (
+                <span
+                  className="absolute inset-0 pointer-events-none overflow-visible flex items-center justify-center"
+                  aria-hidden="true"
+                >
+                  {/* Page 1: right textbook page — fans out top-right */}
+                  <span
+                    className="absolute -top-1 -right-1 w-3 h-3.5 rounded-[2px] flex flex-col justify-center gap-[2px] px-[2.5px] vault-page-1 pointer-events-none shadow-sm"
+                    style={{
+                      background: "var(--bg-surface)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    <span
+                      className="w-full h-[1.5px] rounded-[1px]"
+                      style={{ background: "var(--accent)" }}
+                    />
+                    <span
+                      className="w-2/3 h-[1.5px] rounded-[1px]"
+                      style={{ background: "var(--text-muted)" }}
+                    />
+                  </span>
+
+                  {/* Page 2: left textbook page — fans out top-left */}
+                  <span
+                    className="absolute -top-1 -left-1 w-3 h-3.5 rounded-[2px] flex flex-col justify-center gap-[2px] px-[2.5px] vault-page-2 pointer-events-none shadow-sm"
+                    style={{
+                      background: "var(--bg-surface)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    <span
+                      className="w-full h-[1.5px] rounded-[1px]"
+                      style={{ background: "var(--accent-text)" }}
+                    />
+                    <span
+                      className="w-1/2 h-[1.5px] rounded-[1px]"
+                      style={{ background: "var(--text-muted)" }}
+                    />
+                  </span>
+
+                  {/* Page 3: center knowledge sheet — rises upward from spine */}
+                  <span
+                    className="absolute -top-1.5 left-1/2 w-2.5 h-3.5 rounded-[2px] flex flex-col justify-center gap-[2px] px-[2px] vault-page-3 pointer-events-none shadow-sm"
+                    style={{
+                      background: "var(--bg-surface-2)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    <span
+                      className="w-full h-[1.5px] rounded-[1px]"
+                      style={{ background: "var(--accent)" }}
+                    />
+                    <span
+                      className="w-3/4 h-[1px] rounded-[1px]"
+                      style={{ background: "var(--text-muted)" }}
+                    />
+                  </span>
+                </span>
+              )}
             </span>
+
             <span className="font-semibold tracking-tight text-sm sm:text-base truncate max-w-[175px] sm:max-w-none">
-              Personal AI Assistant
+              LearnVault
             </span>
           </Link>
 
           {/* Main Navigation Links */}
           {!isLoginPage && (
-            <nav className="hidden md:flex items-center gap-1" aria-label="Main Navigation">
+            <nav className="hidden md:flex items-center gap-0.5" aria-label="Main Navigation">
               {NAV_LINKS.map((link) => {
                 const isActive = pathname === link.href || pathname.startsWith(link.href + "/");
                 return (
                   <Link
                     key={link.href}
                     href={link.href}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
-                    style={
+                    className={`relative px-3 py-1.5 text-sm font-medium transition-colors duration-150 active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none rounded-lg group ${
                       isActive
-                        ? {
-                            background: "var(--bg-surface-2)",
-                            color: "var(--text-primary)",
-                          }
-                        : {
-                            color: "var(--text-secondary)",
-                          }
-                    }
-                    onMouseEnter={(e) => {
-                      if (!isActive) {
-                        (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)";
-                        (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isActive) {
-                        (e.currentTarget as HTMLElement).style.background = "";
-                        (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)";
-                      }
-                    }}
+                        ? "text-[color:var(--text-primary)]"
+                        : "text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                    }`}
                   >
                     {link.name}
+                    {/* Active indicator: subtle underline bar */}
+                    {isActive && (
+                      <span
+                        className="absolute bottom-0 left-2.5 right-2.5 h-[2px] rounded-full"
+                        style={{ background: "var(--accent)" }}
+                      />
+                    )}
                   </Link>
                 );
               })}

@@ -100,8 +100,17 @@ def get_qdrant_client(
             exc,
             LOCAL_QDRANT_PATH,
         )
-        _active_client = QdrantClient(path=str(LOCAL_QDRANT_PATH))
-        return _active_client
+        try:
+            _active_client = QdrantClient(path=str(LOCAL_QDRANT_PATH))
+            return _active_client
+        except Exception as lock_err:
+            logger.warning(
+                "Could not lock local Qdrant storage at %s: %s. Falling back to in-memory client.",
+                LOCAL_QDRANT_PATH,
+                lock_err,
+            )
+            _active_client = QdrantClient(":memory:")
+            return _active_client
 
 
 def is_qdrant_available(client: Optional[QdrantClient] = None) -> bool:

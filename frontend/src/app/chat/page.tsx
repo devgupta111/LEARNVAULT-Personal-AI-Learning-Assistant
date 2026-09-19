@@ -298,7 +298,7 @@ function ChatComponent() {
 
   return (
     <div
-      className="flex-1 flex flex-col md:flex-row h-[calc(100vh-4rem)] max-w-7xl w-full mx-auto p-4 gap-4"
+      className="flex-1 flex flex-col md:flex-row h-[calc(100vh-3.5rem)] max-w-7xl w-full mx-auto p-4 gap-4"
     >
       {/* ── Left Sidebar ── */}
       <div
@@ -513,8 +513,12 @@ function ChatComponent() {
         >
           <div>
             <h2 className="text-sm font-bold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-              <span>💬</span>
-              <span>RAG Chat</span>
+              <span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ color: "var(--accent-text)" }}>
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+              </span>
+              <span>Study Chat</span>
               {selectedDoc && (
                 <span className="text-xs font-normal" style={{ color: "var(--text-muted)" }}>
                   — {selectedDoc.filename}

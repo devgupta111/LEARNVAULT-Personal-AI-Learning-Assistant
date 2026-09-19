@@ -29,7 +29,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Personal AI Learning Assistant",
+  title: "LearnVault — Personal AI Learning Assistant",
   description:
     "Grounded RAG study companion — ask questions from your own notes with verified page citations and adaptive quizzes.",
 };

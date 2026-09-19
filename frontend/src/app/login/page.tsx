@@ -196,16 +196,30 @@ export default function LoginPage() {
         {/* Brand */}
         <div className="text-center mb-8">
           <div
-            className="inline-flex w-14 h-14 rounded-2xl text-white items-center justify-center font-black text-xl mb-4 shadow-lg"
+            className="inline-flex w-14 h-14 rounded-2xl text-white items-center justify-center mb-4 shadow-lg"
             style={{ background: "var(--accent)" }}
           >
-            AI
+            {/* Vault/book icon — same as navbar logo for brand consistency */}
+            <svg
+              width="26"
+              height="26"
+              viewBox="0 0 18 18"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <rect x="3" y="2" width="2" height="14" rx="1" fill="white" fillOpacity="0.9" />
+              <rect x="5" y="2" width="10" height="14" rx="1.5" fill="white" fillOpacity="0.25" stroke="white" strokeWidth="1" strokeOpacity="0.7" />
+              <line x1="7.5" y1="6" x2="13" y2="6" stroke="white" strokeWidth="1" strokeLinecap="round" strokeOpacity="0.9" />
+              <line x1="7.5" y1="8.5" x2="13" y2="8.5" stroke="white" strokeWidth="1" strokeLinecap="round" strokeOpacity="0.9" />
+              <line x1="7.5" y1="11" x2="11" y2="11" stroke="white" strokeWidth="1" strokeLinecap="round" strokeOpacity="0.7" />
+            </svg>
           </div>
           <h1
             className="text-2xl font-bold"
             style={{ color: "var(--text-primary)" }}
           >
-            Welcome to Personal AI Learning Assistant
+            Welcome to LearnVault
           </h1>
           <p className="text-sm mt-2" style={{ color: "var(--text-muted)" }}>
             Sign in or create your account to continue.
@@ -276,20 +290,7 @@ export default function LoginPage() {
             type="button"
             onClick={handleGuestLogin}
             disabled={loading}
-            className="w-full py-2.5 rounded-xl text-xs font-semibold transition-all active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
-            style={{
-              background: "var(--bg-surface-2)",
-              color: "var(--text-secondary)",
-              border: "1px solid var(--border)",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)";
-              (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "var(--bg-surface-2)";
-              (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)";
-            }}
+            className="btn-secondary w-full py-2.5 rounded-xl text-xs font-semibold focus-visible:ring-2 focus-visible:outline-none"
           >
             Continue as Guest
           </button>

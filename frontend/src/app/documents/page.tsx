@@ -186,7 +186,7 @@ export default function DocumentsPage() {
           Document Management
         </h1>
         <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-          Upload PDF lecture notes, course materials, or textbooks. Documents are automatically extracted, chunked, and indexed for RAG Chat and Quiz.
+          Upload PDF lecture notes, course materials, or textbooks. Documents are automatically extracted, chunked, and indexed for Chat and Quiz.
         </p>
       </div>
 

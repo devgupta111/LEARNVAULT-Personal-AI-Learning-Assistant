@@ -37,7 +37,12 @@ export default function Home() {
       >
         Learn Smarter with Your{" "}
         <span
-          className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent inline-block"
+          style={{
+            background: "linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 50%, var(--accent-text) 100%)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            backgroundClip: "text",
+          }}
         >
           Own Study Material
         </span>

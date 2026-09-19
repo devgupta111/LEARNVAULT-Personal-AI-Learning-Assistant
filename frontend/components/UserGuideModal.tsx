@@ -31,7 +31,7 @@ const SECTIONS: Section[] = [
     emoji: "🚀",
     title: "Getting Started",
     items: [
-      { desc: "Personal AI Learning Assistant helps you master your course materials through grounded Q&A and adaptive quizzes." },
+      { desc: "LearnVault helps you master your course materials through grounded Q&A and adaptive quizzes." },
       { term: "PDF Upload Limit", desc: "PDF files up to 20 MB are supported." },
       { desc: "Uploading study material: Upload lecture notes, textbooks, or course handouts in PDF format (up to 20 MB) on the Documents page." },
       { desc: "Using Chat: Ask natural-language questions about your notes and receive factual, grounded answers with exact page references." },
@@ -234,7 +234,7 @@ export default function UserGuideModal({ onClose }: Props) {
           className="px-6 py-3 flex items-center justify-between shrink-0"
           style={{ borderTop: "1px solid var(--border)", background: "var(--bg-surface-2)" }}
         >
-          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>Personal AI Learning Assistant — Help</span>
+          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>LearnVault — Help</span>
           <button
             type="button"
             onClick={onClose}

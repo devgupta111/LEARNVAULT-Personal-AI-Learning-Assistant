@@ -36,6 +36,7 @@
   --accent-border: #c4b5fd;
   --foreground: #0f172a;
   --background: #f8f9fb;
+  --nav-height: 4rem;
 }
 
 /* ── Dark theme ────────────────────────────────────────────────────────────── */
@@ -56,6 +57,7 @@
   --accent-border: #3730a3;
   --foreground: #fafafa;
   --background: #09090b;
+  --nav-height: 4rem;
 }
 
 /* ── Green theme ───────────────────────────────────────────────────────────── */
@@ -76,6 +78,7 @@
   --accent-border: #166534;
   --foreground: #e8f5e8;
   --background: #0a0f0a;
+  --nav-height: 4rem;
 }
 
 /* ── Tailwind inline theme tokens ──────────────────────────────────────────── */
@@ -96,6 +99,12 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
+/* ── Selection colors ──────────────────────────────────────────────────────── */
+::selection {
+  background-color: var(--accent-surface);
+  color: var(--accent-text);
+}
+
 /* ── Scrollbar ─────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 6px;
@@ -112,10 +121,60 @@ body {
   background: var(--text-muted);
 }
 
-/* ── Focus ring ────────────────────────────────────────────────────────────── */
+/* ── Green theme scrollbar ─────────────────────────────────────────────────── */
+[data-theme="green"] ::-webkit-scrollbar-thumb {
+  background: var(--border);
+}
+[data-theme="green"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+/* ── Focus ring & Input focus ──────────────────────────────────────────────── */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* ── Input base transition ──────────────────────────────────────────────────── */
+input, select, textarea {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* ── Secondary button utility ───────────────────────────────────────────────── */
+/* Use instead of onMouseEnter/onMouseLeave inline style hacks */
+.btn-secondary {
+  background: var(--bg-surface-2);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.btn-secondary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Primary button utility ─────────────────────────────────────────────────── */
+.btn-primary {
+  background: var(--accent);
+  color: #ffffff;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ── Smooth page transitions ────────────────────────────────────────────────── */
@@ -140,4 +199,85 @@ body {
 }
 .hero-cta-btn:active {
   transform: scale(0.98);
+}
+
+/* ── LearnVault Logo Click: Subtle Textbook + Vault Unlock Micro-Interaction ── */
+/* Strictly physics & document movement: Press → Vault Unlock → Textbook Opens → Knowledge Pages → Return */
+/* NO stars, NO sparkles, NO sprinkler effects, NO magical glow, NO white light burst */
+
+@keyframes vaultBadgeUnlock {
+  /*
+   * 0% - 12%: Tactile press / compression
+   * 12% - 28%: Compact vault unlock pop
+   * 28% - 46%: Small textbook opening breath
+   * 46% - 70%: Knowledge pages display
+   * 70% - 100%: Smooth settle back to exact resting state
+   */
+  0%   { transform: scale(1) translateY(0) rotate(0deg); }
+  12%  { transform: scale(0.93) translateY(0.5px) rotate(-1deg); }  /* Press compress */
+  28%  { transform: scale(1.05) translateY(-0.5px) rotate(1.5deg); } /* Vault unlock pop */
+  46%  { transform: scale(1.02) translateY(0) rotate(-0.5deg); }     /* Textbook opens */
+  70%  { transform: scale(0.995) translateY(0) rotate(0.2deg); }     /* Gentle return */
+  85%  { transform: scale(1.003) translateY(0) rotate(0deg); }       /* Settle */
+  100% { transform: scale(1) translateY(0) rotate(0deg); }           /* Exact idle state */
+}
+
+.vault-badge-animating {
+  animation: vaultBadgeUnlock 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ── 3 Subtle Textbook Pages / Document Shapes (NO stars, NO sparkles) ── */
+
+/* Page 1 (Right Page): Fans out to the upper right like a turning book page, then glides back */
+@keyframes vaultPageRight {
+  0%   { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(0.5); }
+  22%  { opacity: 1; transform: translate(7px, -6px) rotate(7deg) scale(1); }
+  55%  { opacity: 0.95; transform: translate(14px, -15px) rotate(13deg) scale(0.96); }
+  78%  { opacity: 0.45; transform: translate(11px, -10px) rotate(9deg) scale(0.88); }
+  100% { opacity: 0; transform: translate(5px, -3px) rotate(3deg) scale(0.65); }
+}
+
+/* Page 2 (Left Page): Fans out to the upper left like an opening book page, then glides back */
+@keyframes vaultPageLeft {
+  0%   { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(0.5); }
+  22%  { opacity: 1; transform: translate(-7px, -6px) rotate(-7deg) scale(1); }
+  55%  { opacity: 0.95; transform: translate(-14px, -15px) rotate(-13deg) scale(0.96); }
+  78%  { opacity: 0.45; transform: translate(-11px, -10px) rotate(-9deg) scale(0.88); }
+  100% { opacity: 0; transform: translate(-5px, -3px) rotate(-3deg) scale(0.65); }
+}
+
+/* Page 3 (Center Knowledge Sheet): Rises upward slightly from the book spine, then settles back */
+@keyframes vaultPageCenter {
+  0%   { opacity: 0; transform: translate(-50%, 0) rotate(0deg) scale(0.5); }
+  24%  { opacity: 1; transform: translate(-50%, -7px) rotate(0deg) scale(1); }
+  55%  { opacity: 0.95; transform: translate(-50%, -15px) rotate(1deg) scale(0.96); }
+  78%  { opacity: 0.45; transform: translate(-50%, -9px) rotate(0.5deg) scale(0.88); }
+  100% { opacity: 0; transform: translate(-50%, -3px) rotate(0deg) scale(0.65); }
+}
+
+.vault-page-1 {
+  animation: vaultPageRight 0.80s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0.06s;
+}
+
+.vault-page-2 {
+  animation: vaultPageLeft 0.80s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0.08s;
+}
+
+.vault-page-3 {
+  animation: vaultPageCenter 0.78s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0.04s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vault-badge-animating {
+    animation: none !important;
+    transform: scale(1) !important;
+  }
+  .vault-page-1,
+  .vault-page-2,
+  .vault-page-3 {
+    display: none !important;
+  }
 }
