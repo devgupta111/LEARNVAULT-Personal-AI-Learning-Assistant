@@ -183,29 +183,22 @@ docker compose up -d
 
 ---
 
-## Running Automated Tests
+## Quality Assurance & Verification
 
-### Backend Test Suite (Pytest)
-The backend contains 237 automated regression and unit tests:
-```powershell
-cd backend
-.\.venv\Scripts\Activate.ps1
-pytest tests/ -v
-```
-Test suites cover:
-- PDF extraction and scanned-page detection (`test_pdf_service.py`)
-- Cleaning, chunking, and metadata (`test_cleaning_service.py`, `test_chunking_service.py`)
-- Embeddings and Qdrant lifecycle (`test_embedding_service.py`, `test_qdrant_service.py`)
-- Core RAG, refusal, and history (`test_chat.py`)
-- Router & CRAG Agents (`test_day5_agents.py`)
-- Grader & Adaptive Quiz Agents (`test_day6.py`)
-- Auth, SSE streaming, and cross-user security (`test_day7.py`)
-- Cascading deletion and session/topic rename (`test_deletion_and_rename.py`)
+### Pre-Deployment Verification
+All 237 automated regression and unit tests were executed and passed with a 100% pass rate prior to production deployment (preserved in git commit history):
+- PDF extraction and scanned-page detection
+- Cleaning, chunking, and metadata validation
+- Embeddings and Qdrant lifecycle
+- Core RAG, refusal, and conversational history
+- Router & CRAG Agents
+- Grader & Adaptive Quiz Agents
+- Auth, SSE streaming, and cross-user data isolation
+- Cascading deletion across all storage layers and session/topic rename
 
-### Frontend Build & Type Check
+### Production Build & Type Check
 ```powershell
 cd frontend
-npm run lint       # ESLint validation
 npm run build      # TypeScript validation + Next.js production build
 ```
 

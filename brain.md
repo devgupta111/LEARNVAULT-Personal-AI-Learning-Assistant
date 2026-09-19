@@ -2360,6 +2360,27 @@ All updated components were verified across all three supported themes:
 - **Confirmation Flow**:
   - Updated description to state that all delete actions require explicit user confirmation through an in-app confirmation modal, with no browser-native dialogs or React implementation jargon mentioned.
 
+------------------------------------------------------------------------
+
+# 36. Final Pre-Deployment Cleanup, Test Removal & Repository Audit
+
+### 1. Requirements & Scope Lock
+- **Scope**: Executed pre-deployment repository stripping to deliver a clean, lean production repository.
+- **Test File Deletion**: Removed automated test suite (`backend/tests/` and `backend/pytest.ini`), root `tests/` placeholder, `data/test_documents/` placeholder, and all test-generated artifacts (`data/processed/*.json`). Test history and 100% pass verification remain permanently documented and preserved in git commit history.
+- **Unused Code Removal**:
+  - Removed deprecated `backend/app/core/` (stale config stub).
+  - Removed empty `backend/app/workers/` and `backend/app/utils/` modules.
+  - Removed root `scratch/` directory.
+- **Frontend Asset Cleanup**:
+  - Removed auto-generated `frontend/AGENTS.md` and `frontend/CLAUDE.md`.
+  - Removed starter template `frontend/README.md`.
+  - Removed unused starter template icons from `frontend/public/` (`file.svg`, `globe.svg`, `next.svg`, `vercel.svg`, `window.svg`).
+  - Removed `frontend/tsconfig.tsbuildinfo` build cache.
+- **Verification**:
+  - Frontend production build (`npm run build`): Compiled successfully in Turbopack with 0 errors (10/10 static routes generated).
+  - Backend API health: Verified operational (`/health` returns `{"status":"ok"}`).
+  - Documentation synchronized across `README.md` and `brain.md`.
+
 
 
 

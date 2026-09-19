@@ -33,16 +33,8 @@ data/uploads/*
 !data/uploads/.gitkeep
 !data/uploads/lec-1.pdf
 !data/uploads/Lec-2.pdf
-data/test_documents/*
-!data/test_documents/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
-
-# Root-level scratch scripts and one-off test helpers (never commit these)
-scratch/*
-!scratch/.gitkeep
-tests/*
-!tests/.gitkeep
 
 # Python
 __pycache__/
