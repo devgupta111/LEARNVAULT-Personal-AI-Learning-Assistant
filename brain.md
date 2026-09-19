@@ -2324,6 +2324,26 @@ All updated components were verified across all three supported themes:
 - **`frontend/src/app/documents/page.tsx`**: Replaced `window.confirm()` with `setDeleteTarget(...)` and `<DeleteConfirmModal>`.
 - **`frontend/src/app/dashboard/page.tsx`**: Replaced `window.confirm()` with `setDeleteTarget(...)` and `<DeleteConfirmModal>`.
 
+------------------------------------------------------------------------
+
+# 34. Dashboard Weak Topics Context-Aware Empty States
+
+### 1. Requirements & Scope Lock
+- **Scope**: Made the Dashboard "Weak Topics" section strictly context-aware across 3 distinct data lifecycle states without altering quiz scoring logic, backend endpoints, or dashboard layout.
+- **Scoring Logic Preserved**: Accuracy `< 60%` is Weak, `>= 60%` is Not Weak.
+
+### 2. State Specification
+- **Case 1: No Documents Uploaded (`!hasDocuments`)**:
+  - Header: Shows `"Weak Topics"`. Does **not** show `"Weak = accuracy < 60%"` legend or `"Go to Quizzes →"` link.
+  - Body: `"Upload a study material and complete a quiz to see your weak-topic analysis."`
+- **Case 2: Documents Exist, But No Completed Quizzes (`hasDocuments && !hasQuizResults`)**:
+  - Header: Shows `"Weak Topics"` and a subtle `"Go to Quizzes →"` link. Does **not** show `"Weak = accuracy < 60%"` legend.
+  - Body: `"Complete a quiz to see your weak-topic analysis."`
+- **Case 3: Quiz Results Exist (`hasQuizResults`)**:
+  - Header: Shows `"Weak Topics"`, detection count badge (if any weak topics detected), `"Weak = accuracy < 60%"` rule legend, and `"Go to Quizzes →"` link.
+  - Body: Displays weak-topic cards (`< 60%` accuracy) with topic name, percentage, and "Practice" action button. If all completed quizzes scored `>= 60%`, shows `"No weak topics detected. All tested topics scored at or above 60% accuracy."`
+
+
 
 
 

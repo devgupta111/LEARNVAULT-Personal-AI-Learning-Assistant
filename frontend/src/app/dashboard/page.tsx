@@ -97,6 +97,8 @@ export default function DashboardPage() {
     }
   }
   const weakTopics = Array.from(latestTopicMap.values()).filter((t) => t.percentage < 60);
+  const hasDocuments = documents.length > 0;
+  const hasQuizResults = latestTopicMap.size > 0;
 
   if (loading) {
     return (
@@ -183,23 +185,32 @@ export default function DashboardPage() {
             style={{ color: "var(--text-primary)" }}
           >
             <span>Weak Topics</span>
-            {weakTopics.length > 0 && (
+            {hasQuizResults && weakTopics.length > 0 && (
               <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border border-rose-200 dark:border-rose-900">
                 {weakTopics.length} detected
               </span>
             )}
           </h2>
-          <div className="flex items-center gap-3">
-            <span className="text-[11px] hidden sm:block" style={{ color: "var(--text-muted)" }}>
-              Weak = accuracy &lt; 60%
-            </span>
-            <Link href="/quiz" className="text-xs font-medium" style={{ color: "var(--accent-text)" }}>
-              Go to Quizzes →
-            </Link>
-          </div>
+          {hasQuizResults ? (
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] hidden sm:block" style={{ color: "var(--text-muted)" }}>
+                Weak = accuracy &lt; 60%
+              </span>
+              <Link href="/quiz" className="text-xs font-medium" style={{ color: "var(--accent-text)" }}>
+                Go to Quizzes →
+              </Link>
+            </div>
+          ) : hasDocuments ? (
+            <div className="flex items-center gap-3">
+              <Link href="/quiz" className="text-xs font-medium" style={{ color: "var(--accent-text)" }}>
+                Go to Quizzes →
+              </Link>
+            </div>
+          ) : null}
         </div>
 
-        {weakTopics.length === 0 ? (
+        {!hasDocuments ? (
+          /* CASE 1: No documents */
           <div
             className="p-4 rounded-xl border border-dashed text-xs"
             style={{
@@ -208,9 +219,34 @@ export default function DashboardPage() {
               color: "var(--text-muted)",
             }}
           >
-            No weak topics detected yet. Complete a quiz to see your diagnostics.
+            Upload a study material and complete a quiz to see your weak-topic analysis.
+          </div>
+        ) : !hasQuizResults ? (
+          /* CASE 2: Documents exist but no quiz results */
+          <div
+            className="p-4 rounded-xl border border-dashed text-xs"
+            style={{
+              borderColor: "var(--border)",
+              background: "var(--bg-surface)",
+              color: "var(--text-muted)",
+            }}
+          >
+            Complete a quiz to see your weak-topic analysis.
+          </div>
+        ) : weakTopics.length === 0 ? (
+          /* CASE 3: Quiz results exist, no weak topics */
+          <div
+            className="p-4 rounded-xl border border-dashed text-xs"
+            style={{
+              borderColor: "var(--border)",
+              background: "var(--bg-surface)",
+              color: "var(--text-muted)",
+            }}
+          >
+            No weak topics detected. All tested topics scored at or above 60% accuracy.
           </div>
         ) : (
+          /* CASE 3: Quiz results exist with weak topics */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {weakTopics.map((item) => (
               <div
