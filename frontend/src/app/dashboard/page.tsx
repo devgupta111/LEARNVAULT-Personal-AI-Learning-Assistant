@@ -21,6 +21,7 @@ import { useAuth } from "../../../hooks/useAuth";
 import { useToast } from "../../../components/Toast";
 import { deleteDocument, getDocuments, getQuizHistory } from "../../../lib/api";
 import { DocumentSummary, QuizHistoryItem } from "../../../types";
+import DeleteConfirmModal from "../../../components/DeleteConfirmModal";
 
 export default function DashboardPage() {
   const { loading: authLoading } = useAuth(true);
@@ -30,6 +31,7 @@ export default function DashboardPage() {
   const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; filename: string } | null>(null);
 
   const fetchData = async () => {
     try {
@@ -56,17 +58,16 @@ export default function DashboardPage() {
     }
   }, [authLoading]);
 
-  const handleDeleteDocument = async (docId: string, filename: string) => {
-    const confirmed = window.confirm(
-      `Delete "${filename}"?\n\nThis will permanently remove the document, all chat sessions, messages, quizzes, and quiz attempts linked to it.\n\nThis action cannot be undone.`
-    );
-    if (!confirmed) return;
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    const docId = deleteTarget.id;
     setDeletingDocId(docId);
     setError(null);
     try {
       await deleteDocument(docId);
       setDocuments((prev) => prev.filter((d) => (d.document_id || d.id) !== docId));
       toast.success("Document deleted successfully.");
+      setDeleteTarget(null);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to delete document";
       setError(msg);
@@ -375,7 +376,7 @@ export default function DashboardPage() {
                           )}
                           <button
                             type="button"
-                            onClick={() => handleDeleteDocument(docId, doc.filename)}
+                            onClick={() => setDeleteTarget({ id: docId, filename: doc.filename })}
                             disabled={deletingDocId === docId}
                             title="Delete document"
                             className="px-2.5 py-1 text-xs font-medium rounded-lg transition-all disabled:opacity-50 ml-1 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:border-rose-300 dark:hover:border-rose-800 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:outline-none"
@@ -392,6 +393,18 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      <DeleteConfirmModal
+        isOpen={Boolean(deleteTarget)}
+        filename={deleteTarget?.filename || ""}
+        isDeleting={Boolean(deletingDocId)}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          if (!deletingDocId) {
+            setDeleteTarget(null);
+          }
+        }}
+      />
     </div>
   );
 }

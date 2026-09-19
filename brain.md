@@ -2294,6 +2294,36 @@ All updated components were verified across all three supported themes:
 - **Frontend Linter (`npm run lint`)**: Clean exit code 0.
 - **Frontend Production Build (`npm run build`)**: Compiled successfully with Turbopack; 10/10 static routes generated; 0 errors.
 
+------------------------------------------------------------------------
+
+# 33. LearnVault In-App Document Deletion Confirmation Modal
+
+### 1. Requirements & Scope Lock
+- **Scope**: Replaced legacy browser-native `window.confirm()` dialog during document deletion with a custom, accessible, theme-aware in-app modal.
+- **Strict Scope Boundaries**: Backend deletion endpoints, Qdrant cascade cleanup, database cascaded deletion, themes, navbar, logo, and overall layout strictly untouched.
+
+### 2. Component Implementation (`frontend/components/DeleteConfirmModal.tsx`)
+- **Dialog Accessibility**:
+  - `role="alertdialog"`, `aria-modal="true"`, `aria-labelledby="delete-modal-title"`, `aria-describedby="delete-modal-desc"`.
+  - Keyboard navigation: `Escape` key cancels and dismisses dialog; `Tab` / `Shift+Tab` cycles focus strictly between `Cancel` and `Delete` buttons (focus trapping).
+  - Safe default focus: Focus lands on `Cancel` button upon opening to prevent accidental destructive actions.
+  - Focus restoration: Automatically restores focus to the triggering element upon closing.
+  - Background interaction lock: `document.body.style.overflow = "hidden"` prevents body scroll while modal is active; subtle darkened backdrop with blur overlay.
+- **Copy & Visuals**:
+  - Title: `Delete document?`
+  - Filename confirmation: `Delete '${filename}'?` with safe line wrapping (`break-all`) for long names.
+  - Permanent removal copy: `"This will permanently remove the document, all chat sessions, messages, quizzes, and quiz attempts linked to it."`
+  - Non-reversible warning: `"This action cannot be undone."`
+  - Action buttons: Secondary `Cancel` and Destructive `Delete` (rose-600 background).
+- **Double-Click & Loading State Protection**:
+  - Both action buttons are disabled while `isDeleting` is true.
+  - Delete button displays an inline loading spinner and `"Deleting…"` label during processing.
+  - Backdrop click and `Escape` key are disabled while deletion request is in flight.
+
+### 3. Integrated Pages
+- **`frontend/src/app/documents/page.tsx`**: Replaced `window.confirm()` with `setDeleteTarget(...)` and `<DeleteConfirmModal>`.
+- **`frontend/src/app/dashboard/page.tsx`**: Replaced `window.confirm()` with `setDeleteTarget(...)` and `<DeleteConfirmModal>`.
+
 
 
 
