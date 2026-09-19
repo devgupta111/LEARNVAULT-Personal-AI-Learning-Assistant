@@ -28,6 +28,9 @@ from app.models.quiz import Quiz
 from app.models.quiz_attempt import QuizAttempt
 from app.api.auth import create_access_token
 from app.config import settings
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
+import app.services.qdrant_service as qdrant_service
 
 # In-memory hermetic SQLite
 TEST_DB_URL = "sqlite:///:memory:"
@@ -149,6 +152,170 @@ class TestDeleteDocument:
 
         # Verify file deleted
         assert not fake_pdf.exists()
+
+    def test_delete_document_complete_data_cleanup(self, client, db, tmp_path, monkeypatch):
+        """
+        Verify complete data cleanup when a document is deleted:
+        - original uploaded PDF removed from UPLOAD_DIR
+        - processed JSON chunks removed from PROCESSED_DIR
+        - temporary extraction/working files removed
+        - database records removed (Document, Session, Message, Quiz, QuizAttempt)
+        - Qdrant vectors removed for this document
+        - other users' documents, files, and vectors remain 100% intact.
+        """
+        upload_dir = tmp_path / "uploads"
+        processed_dir = tmp_path / "processed"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        processed_dir.mkdir(parents=True, exist_ok=True)
+
+        monkeypatch.setattr(settings, "UPLOAD_DIR", str(upload_dir))
+        monkeypatch.setattr(settings, "PROCESSED_DIR", str(processed_dir))
+
+        # Use hermetic in-memory Qdrant client
+        memory_qdrant = QdrantClient(":memory:")
+        monkeypatch.setattr(qdrant_service, "get_qdrant_client", lambda *args, **kwargs: memory_qdrant)
+        qdrant_service.ensure_collection(client=memory_qdrant)
+
+        alice_id = "alice-student-1"
+        bob_id = "bob-student-2"
+
+        alice_token = create_access_token(alice_id)
+        alice_headers = {"Authorization": f"Bearer {alice_token}"}
+
+        # 1. Create Alice's document, files, sessions, quizzes, vectors
+        alice_doc_id = str(uuid.uuid4())
+        alice_pdf = upload_dir / f"{alice_doc_id}.pdf"
+        alice_pdf.write_bytes(b"%PDF-1.4 Alice's private notes")
+
+        alice_json = processed_dir / f"{alice_doc_id}.json"
+        alice_json.write_text(json.dumps({"document_id": alice_doc_id, "chunks": ["chunk1", "chunk2"]}))
+
+        alice_tmp = upload_dir / f"{alice_doc_id}.extracted.tmp"
+        alice_tmp.write_text("temporary extraction data")
+
+        alice_doc = Document(
+            id=alice_doc_id,
+            user_id=alice_id,
+            filename="alice_notes.pdf",
+            subject="Algorithms",
+            file_path=str(alice_pdf),
+            status="READY",
+        )
+        db.add(alice_doc)
+
+        alice_session = ChatSession(id=str(uuid.uuid4()), user_id=alice_id, document_id=alice_doc_id, title="Alice Chat")
+        alice_session_id = alice_session.id
+        db.add(alice_session)
+        alice_msg = Message(id=str(uuid.uuid4()), session_id=alice_session_id, sender="user", content="Graph traversal?")
+        db.add(alice_msg)
+
+        alice_quiz = Quiz(id=str(uuid.uuid4()), user_id=alice_id, document_id=alice_doc_id, topic="Graphs", questions="[]")
+        alice_quiz_id = alice_quiz.id
+        db.add(alice_quiz)
+        alice_attempt = QuizAttempt(id=str(uuid.uuid4()), quiz_id=alice_quiz_id, user_id=alice_id, score=1, answers="[]")
+        db.add(alice_attempt)
+
+        # Alice's Qdrant vector
+        memory_qdrant.upsert(
+            collection_name=settings.QDRANT_COLLECTION_NAME,
+            points=[
+                models.PointStruct(
+                    id=str(uuid.uuid4()),
+                    vector=[0.1] * 384,
+                    payload={"document_id": alice_doc_id, "user_id": alice_id, "text": "Alice chunk text"},
+                )
+            ],
+        )
+
+        # 2. Create Bob's document, files, sessions, quizzes, vectors (must remain untouched!)
+        bob_doc_id = str(uuid.uuid4())
+        bob_pdf = upload_dir / f"{bob_doc_id}.pdf"
+        bob_pdf.write_bytes(b"%PDF-1.4 Bob's private notes")
+
+        bob_json = processed_dir / f"{bob_doc_id}.json"
+        bob_json.write_text(json.dumps({"document_id": bob_doc_id, "chunks": ["bob_chunk"]}))
+
+        bob_doc = Document(
+            id=bob_doc_id,
+            user_id=bob_id,
+            filename="bob_notes.pdf",
+            subject="Networks",
+            file_path=str(bob_pdf),
+            status="READY",
+        )
+        db.add(bob_doc)
+
+        bob_session = ChatSession(id=str(uuid.uuid4()), user_id=bob_id, document_id=bob_doc_id)
+        db.add(bob_session)
+
+        # Bob's Qdrant vector
+        memory_qdrant.upsert(
+            collection_name=settings.QDRANT_COLLECTION_NAME,
+            points=[
+                models.PointStruct(
+                    id=str(uuid.uuid4()),
+                    vector=[0.2] * 384,
+                    payload={"document_id": bob_doc_id, "user_id": bob_id, "text": "Bob chunk text"},
+                )
+            ],
+        )
+
+        db.commit()
+
+        # Verify initial presence
+        assert alice_pdf.exists()
+        assert alice_json.exists()
+        assert alice_tmp.exists()
+        assert bob_pdf.exists()
+        assert bob_json.exists()
+
+        alice_pts_before, _ = memory_qdrant.scroll(
+            collection_name=settings.QDRANT_COLLECTION_NAME,
+            scroll_filter=models.Filter(
+                must=[models.FieldCondition(key="document_id", match=models.MatchValue(value=alice_doc_id))]
+            ),
+        )
+        assert len(alice_pts_before) == 1
+
+        # 3. Delete Alice's document
+        res = client.delete(f"/documents/{alice_doc_id}", headers=alice_headers)
+        assert res.status_code == 200
+        assert res.json()["deleted"] is True
+
+        # 4. Verify Alice's filesystem files are gone
+        assert not alice_pdf.exists(), "Alice's PDF was not deleted!"
+        assert not alice_json.exists(), "Alice's processed JSON was not deleted!"
+        assert not alice_tmp.exists(), "Alice's temporary file was not deleted!"
+
+        # 5. Verify Alice's database records are gone
+        assert db.query(Document).filter(Document.id == alice_doc_id).first() is None
+        assert db.query(ChatSession).filter(ChatSession.document_id == alice_doc_id).first() is None
+        assert db.query(Message).filter(Message.session_id == alice_session_id).first() is None
+        assert db.query(Quiz).filter(Quiz.document_id == alice_doc_id).first() is None
+        assert db.query(QuizAttempt).filter(QuizAttempt.quiz_id == alice_quiz_id).first() is None
+
+        # 6. Verify Alice's Qdrant vectors are gone
+        alice_pts_after, _ = memory_qdrant.scroll(
+            collection_name=settings.QDRANT_COLLECTION_NAME,
+            scroll_filter=models.Filter(
+                must=[models.FieldCondition(key="document_id", match=models.MatchValue(value=alice_doc_id))]
+            ),
+        )
+        assert len(alice_pts_after) == 0, "Alice's Qdrant vectors were not deleted!"
+
+        # 7. Verify Bob's data is 100% UNTOUCHED
+        assert bob_pdf.exists(), "Bob's PDF must not be deleted!"
+        assert bob_json.exists(), "Bob's processed JSON must not be deleted!"
+        assert db.query(Document).filter(Document.id == bob_doc_id).first() is not None
+        assert db.query(ChatSession).filter(ChatSession.id == bob_session.id).first() is not None
+
+        bob_pts, _ = memory_qdrant.scroll(
+            collection_name=settings.QDRANT_COLLECTION_NAME,
+            scroll_filter=models.Filter(
+                must=[models.FieldCondition(key="document_id", match=models.MatchValue(value=bob_doc_id))]
+            ),
+        )
+        assert len(bob_pts) == 1, "Bob's Qdrant vectors must remain intact!"
 
     def test_delete_document_not_found(self, client):
         token = create_access_token("alice-user")

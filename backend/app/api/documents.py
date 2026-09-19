@@ -320,28 +320,37 @@ def delete_document(
 
     db.commit()
 
-    # Step 6: Delete uploaded PDF file and processed chunk file
-    upload_path = Path(settings.UPLOAD_DIR) / f"{document_id}.pdf"
-    proc_path = Path(settings.PROCESSED_DIR) / f"{document_id}.json"
-    try:
-        if upload_path.exists():
-            upload_path.unlink()
-            logger.info("Deleted uploaded file: %s", upload_path)
-        else:
-            logger.info("Upload file not found (already absent): %s", upload_path)
-    except OSError as exc:
-        msg = f"Failed to delete uploaded file '{upload_path}': {exc}"
-        logger.error(msg)
-        cleanup_warnings.append(msg)
+    # Step 6: Delete uploaded PDF, processed JSON, and document temporary files
+    upload_dir = Path(settings.UPLOAD_DIR)
+    proc_dir = Path(settings.PROCESSED_DIR)
 
-    try:
-        if proc_path.exists():
-            proc_path.unlink()
-            logger.info("Deleted processed chunk file: %s", proc_path)
-    except OSError as exc:
-        msg = f"Failed to delete processed file '{proc_path}': {exc}"
-        logger.error(msg)
-        cleanup_warnings.append(msg)
+    paths_to_clean = {
+        upload_dir / f"{document_id}.pdf",
+        proc_dir / f"{document_id}.json",
+    }
+    if doc.file_path:
+        paths_to_clean.add(Path(doc.file_path))
+
+    # Clean up any temporary files matching {document_id}* in upload_dir or proc_dir
+    if upload_dir.exists():
+        for temp_f in upload_dir.glob(f"{document_id}*"):
+            paths_to_clean.add(temp_f)
+    if proc_dir.exists():
+        for temp_f in proc_dir.glob(f"{document_id}*"):
+            paths_to_clean.add(temp_f)
+
+    for p in paths_to_clean:
+        try:
+            if p.exists() and p.is_file():
+                # Safety check: only delete files residing within upload_dir or proc_dir
+                res_p = p.resolve()
+                if upload_dir.resolve() in res_p.parents or proc_dir.resolve() in res_p.parents:
+                    p.unlink(missing_ok=True)
+                    logger.info("Deleted document file: %s", p)
+        except OSError as exc:
+            msg = f"Failed to delete document file '{p}': {exc}"
+            logger.error(msg)
+            cleanup_warnings.append(msg)
 
     # Step 7: Delete Qdrant vectors (filtered by document_id AND user_id for safety)
     try:
