@@ -320,8 +320,9 @@ def delete_document(
 
     db.commit()
 
-    # Step 6: Delete uploaded PDF file
+    # Step 6: Delete uploaded PDF file and processed chunk file
     upload_path = Path(settings.UPLOAD_DIR) / f"{document_id}.pdf"
+    proc_path = Path(settings.PROCESSED_DIR) / f"{document_id}.json"
     try:
         if upload_path.exists():
             upload_path.unlink()
@@ -330,6 +331,15 @@ def delete_document(
             logger.info("Upload file not found (already absent): %s", upload_path)
     except OSError as exc:
         msg = f"Failed to delete uploaded file '{upload_path}': {exc}"
+        logger.error(msg)
+        cleanup_warnings.append(msg)
+
+    try:
+        if proc_path.exists():
+            proc_path.unlink()
+            logger.info("Deleted processed chunk file: %s", proc_path)
+    except OSError as exc:
+        msg = f"Failed to delete processed file '{proc_path}': {exc}"
         logger.error(msg)
         cleanup_warnings.append(msg)
 

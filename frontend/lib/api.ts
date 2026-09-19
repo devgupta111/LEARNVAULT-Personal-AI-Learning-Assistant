@@ -116,12 +116,21 @@ export async function loginUser(
 }
 
 export async function loginWithGoogle(
-  credential: string
+  credential: string,
+  guestUserId?: string
 ): Promise<AuthResponse> {
+  const body: Record<string, string> = { credential };
+  if (guestUserId) {
+    body["guest_user_id"] = guestUserId;
+  }
+
+  // Clear any existing token and guest user before establishing authenticated session
+  clearToken();
+
   const res = await fetch(`${API_BASE_URL}/auth/google`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ credential }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
@@ -140,6 +149,16 @@ export async function loginWithGoogle(
     role: "student",
   });
   return data;
+}
+
+export async function cleanupGuestData(guestUserId: string = "dev-user"): Promise<void> {
+  await fetch(`${API_BASE_URL}/auth/guest/cleanup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ guest_user_id: guestUserId }),
+  }).catch((err) => {
+    console.warn("Guest data cleanup request notice:", err);
+  });
 }
 
 export async function getMe(): Promise<User> {

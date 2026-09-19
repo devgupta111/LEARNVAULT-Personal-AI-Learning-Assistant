@@ -52,12 +52,10 @@ from app.services.qdrant_service import upsert_document_chunks
 
 logger = logging.getLogger(__name__)
 
-PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
-
-
 def _get_processed_path(document_id: str) -> Path:
-    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-    return PROCESSED_DIR / f"{document_id}.json"
+    proc_dir = Path(settings.PROCESSED_DIR)
+    proc_dir.mkdir(parents=True, exist_ok=True)
+    return proc_dir / f"{document_id}.json"
 
 
 def run_ingestion_pipeline(

@@ -66,11 +66,15 @@ class Settings(BaseSettings):
     # Day 7 — Google Identity Services Client ID
     GOOGLE_CLIENT_ID: str = "345444138884-bbigs9vt771fii89o3kf0ncs1snl01fu.apps.googleusercontent.com"
 
+    # Production CORS Configuration — safe environment-based origins
+    # Comma-separated list of allowed origins. Defaults to local dev servers.
+    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+    CORS_ORIGIN_REGEX: Optional[str] = r"https:\/\/.*\.vercel\.app"
+    FRONTEND_URL: Optional[str] = None
 
-
-    @field_validator("UPLOAD_DIR", mode="after")
+    @field_validator("UPLOAD_DIR", "PROCESSED_DIR", mode="after")
     @classmethod
-    def resolve_upload_dir(cls, v: str) -> str:
+    def resolve_directory_paths(cls, v: str) -> str:
         p = Path(v)
         if not p.is_absolute():
             return str((PROJECT_ROOT / p).resolve())

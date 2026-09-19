@@ -194,6 +194,15 @@ export default function Navbar() {
     setProfileThemeSubmenuOpen(false);
     setMobileMenuOpen(false);
 
+    // If logging out of a guest session, preserve the guest ID temporarily
+    // so if the user signs up with Google next, the pre-signup guest data is purged.
+    const user = getUser();
+    if (user?.auth_provider === "guest" || user?.user_id === "dev-user") {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("last_guest_id", user.user_id);
+      }
+    }
+
     // 2. Clear authentication token & user from localStorage and dispatch sync event
     clearToken();
 

@@ -16,7 +16,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { GOOGLE_CLIENT_ID, getToken, loginUser, loginWithGoogle } from "../../../lib/api";
+import { GOOGLE_CLIENT_ID, getToken, getUser, loginUser, loginWithGoogle } from "../../../lib/api";
 import UserGuideModal from "../../../components/UserGuideModal";
 
 interface GoogleIdentityServices {
@@ -59,9 +59,12 @@ export default function LoginPage() {
   const [showGuide, setShowGuide] = useState(false);
   const initializedRef = useRef(false);
 
-  // 1. Returning authenticated user: redirect to /dashboard immediately
+  // 1. Returning authenticated user: redirect to /dashboard immediately.
+  // Guests visiting /login are allowed so they can sign up with Google to create an account.
   useEffect(() => {
-    if (getToken()) {
+    const token = getToken();
+    const user = getUser();
+    if (token && user && user.auth_provider !== "guest" && user.user_id !== "dev-user") {
       router.replace("/dashboard");
       return;
     }
@@ -78,7 +81,18 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      await loginWithGoogle(response.credential);
+      // Determine if there was an active or recent guest session to clean up
+      const currentUser = getUser();
+      const lastGuestId = typeof window !== "undefined" ? localStorage.getItem("last_guest_id") : null;
+      const guestUserId =
+        (currentUser?.auth_provider === "guest" || currentUser?.user_id === "dev-user")
+          ? currentUser.user_id
+          : (lastGuestId || undefined);
+
+      await loginWithGoogle(response.credential, guestUserId);
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("last_guest_id");
+      }
       router.replace("/dashboard");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Google authentication failed";

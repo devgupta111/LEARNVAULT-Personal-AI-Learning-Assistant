@@ -433,6 +433,68 @@ def delete_document_vectors(
         ) from exc
 
 
+def delete_user_vectors(
+    user_id: str,
+    client: Optional[QdrantClient] = None,
+    collection_name: Optional[str] = None,
+) -> int:
+    """
+    Delete all Qdrant vectors for a given user_id (e.g. guest privacy cleanup).
+
+    Filters strictly by user_id payload to prevent cross-user deletion.
+    Never deletes or drops an entire collection.
+
+    Args:
+        user_id: The user identity whose vectors should be removed.
+        client: Optional QdrantClient instance.
+        collection_name: Optional collection name override.
+
+    Returns:
+        Number of points deleted.
+
+    Raises:
+        RuntimeError: If Qdrant is unavailable or deletion fails.
+    """
+    clean_uid = user_id.strip() if user_id else ""
+    if not clean_uid:
+        return 0
+
+    target_client = client or get_qdrant_client()
+    target_collection = collection_name or settings.QDRANT_COLLECTION_NAME
+
+    delete_filter = models.Filter(
+        must=[
+            models.FieldCondition(
+                key="user_id",
+                match=models.MatchValue(value=clean_uid),
+            ),
+        ]
+    )
+
+    try:
+        result = target_client.delete(
+            collection_name=target_collection,
+            points_selector=models.FilterSelector(filter=delete_filter),
+            wait=True,
+        )
+        status_val = str(result.status) if result.status else "unknown"
+        logger.info(
+            "Deleted Qdrant vectors for user_id=%s status=%s",
+            clean_uid,
+            status_val,
+        )
+        return getattr(result, "result", 0) or 0
+    except Exception as exc:
+        logger.error(
+            "Failed to delete Qdrant vectors for user_id=%s: %s",
+            clean_uid,
+            exc,
+        )
+        raise RuntimeError(
+            f"Failed to delete Qdrant vectors for user '{clean_uid}': {exc}"
+        ) from exc
+
+
 def get_collection_info(
     client: Optional[QdrantClient] = None,
     collection_name: Optional[str] = None,

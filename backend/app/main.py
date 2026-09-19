@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import settings
 from app.db.base import Base
 from app.db.database import engine
 from app.api.auth import router as auth_router  # Day 7
@@ -62,16 +63,40 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Personal AI Learning Assistant",
-    description="Backend API for the RAG-based study assistant.",
-    version="1.0.0-day7",
+    title="LearnVault API",
+    description="Backend API for LearnVault — Personal AI Learning Assistant.",
+    version="1.0.0",
     lifespan=lifespan,
 )
 
-# Enable CORS for Next.js frontend
+
+def get_allowed_origins() -> list[str]:
+    """
+    Construct the list of allowed CORS origins from settings.
+    Ensures local development hosts are always permitted, while production
+    origins (such as Vercel) can be supplied via CORS_ORIGINS or FRONTEND_URL.
+    """
+    origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+    if settings.CORS_ORIGINS:
+        for item in settings.CORS_ORIGINS.split(","):
+            cleaned = item.strip()
+            if cleaned and cleaned not in origins:
+                origins.append(cleaned)
+    if settings.FRONTEND_URL:
+        cleaned_frontend = settings.FRONTEND_URL.strip()
+        if cleaned_frontend and cleaned_frontend not in origins:
+            origins.append(cleaned_frontend)
+    return origins
+
+
+# Enable safe CORS for Next.js frontend (never wildcard with credentials in production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=get_allowed_origins(),
+    allow_origin_regex=settings.CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

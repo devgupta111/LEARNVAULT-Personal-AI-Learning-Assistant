@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.config import settings
 from app.db.database import get_db
 from app.models.user import User
+from app.services.guest_cleanup_service import cleanup_guest_data, is_guest_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +33,16 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 class LoginRequest(BaseModel):
     username: str = Field(..., description="Username or email", min_length=1)
     password: Optional[str] = Field(default=None, description="User password")
+    guest_user_id: Optional[str] = Field(default=None, description="Optional guest identifier to clean up upon login")
 
 
 class GoogleLoginRequest(BaseModel):
     credential: str = Field(..., description="Google ID Token credential from Google Identity Services")
+    guest_user_id: Optional[str] = Field(default=None, description="Optional guest session ID to purge upon signup")
+
+
+class GuestCleanupRequest(BaseModel):
+    guest_user_id: Optional[str] = Field(default="dev-user", description="Guest identifier to clean up")
 
 
 class UpdateProfileRequest(BaseModel):
@@ -137,7 +144,10 @@ def require_authenticated_user(authorization: Optional[str] = Header(default=Non
 
 
 @router.post("/login", response_model=AuthResponse)
-def login(request: LoginRequest):
+def login(
+    request: LoginRequest,
+    db: DBSession = Depends(get_db),
+):
     """
     Authenticate user and return a bearer access token.
     Allows login with 'dev-user' or any student username.
@@ -148,6 +158,16 @@ def login(request: LoginRequest):
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Username cannot be blank.",
         )
+
+    # If logging into an authenticated account from a guest session, delete all pre-signup guest data
+    if username != "dev-user" and not username.startswith("guest_"):
+        clean_guest = request.guest_user_id.strip() if request.guest_user_id else None
+        if clean_guest and is_guest_user_id(clean_guest):
+            try:
+                cleanup_guest_data(clean_guest, db)
+                logger.info("Purged pre-login guest data for '%s'", clean_guest)
+            except Exception as exc:
+                logger.error("Non-fatal error during login guest cleanup for '%s': %s", clean_guest, exc)
 
     token = create_access_token(username)
     logger.info("User '%s' authenticated successfully.", username)
@@ -197,6 +217,7 @@ def verify_google_token(credential: str) -> dict:
 @router.post("/google", response_model=AuthResponse)
 def login_google(
     request: GoogleLoginRequest,
+    authorization: Optional[str] = Header(default=None),
     db: DBSession = Depends(get_db),
 ):
     """
@@ -264,6 +285,26 @@ def login_google(
 
     token = create_access_token(user_id)
     logger.info("Google user authenticated: user_id=%s, name=%s", user_id, display_name)
+
+    # Guest Data Cleanup: If user signed up from a guest session, delete all pre-signup guest data completely
+    target_guest_id = None
+    if request.guest_user_id and is_guest_user_id(request.guest_user_id):
+        target_guest_id = request.guest_user_id.strip()
+    elif authorization:
+        try:
+            current_tok_user = get_current_user(authorization)
+            if is_guest_user_id(current_tok_user):
+                target_guest_id = current_tok_user
+        except Exception:
+            pass
+
+    if target_guest_id:
+        try:
+            cleanup_guest_data(target_guest_id, db)
+            logger.info("Purged pre-signup guest data for '%s' upon user signup.", target_guest_id)
+        except Exception as exc:
+            logger.error("Non-fatal error cleaning up guest data for '%s': %s", target_guest_id, exc)
+
     return AuthResponse(
         access_token=token,
         token_type="bearer",
@@ -273,6 +314,37 @@ def login_google(
         picture=picture,
         auth_provider="google",
     )
+
+
+@router.post("/guest/cleanup")
+def cleanup_guest(
+    request: Optional[GuestCleanupRequest] = None,
+    authorization: Optional[str] = Header(default=None),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Explicitly purge pre-signup guest data.
+    Ensures guest sessions leave zero residual data in DB, vector storage, or disk.
+    """
+    target_id = None
+    if request and request.guest_user_id:
+        target_id = request.guest_user_id.strip()
+    elif authorization:
+        try:
+            target_id = get_current_user(authorization)
+        except Exception:
+            pass
+
+    if not target_id:
+        target_id = "dev-user"
+
+    if not is_guest_user_id(target_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Specified user identifier is not an eligible guest session.",
+        )
+
+    return cleanup_guest_data(target_id, db)
 
 
 
