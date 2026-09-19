@@ -89,8 +89,9 @@ const SECTIONS: Section[] = [
     emoji: "⚠️",
     title: "Weak Topic System",
     items: [
-      { term: "Rule: accuracy < 60%", desc: "Any topic where your latest score is below 60% is automatically classified as a Weak Topic." },
-      { term: "Explicit Cutoff", desc: "59% is classified as a Weak Topic. 60% is NOT a Weak Topic (it qualifies as Good understanding)." },
+      { term: "Rule: accuracy < 60%", desc: "Any topic where your latest score is below 60% is automatically classified as a Weak Topic. Topics scoring 60% or above qualify as Good or Strong understanding." },
+      { term: "Explicit Cutoff", desc: "59% is classified as a Weak Topic. 60% is NOT a Weak Topic." },
+      { term: "When Analysis Appears", desc: "Weak-topic analysis is based strictly on completed quiz performance. If you have no uploaded documents, the dashboard prompts you to upload material and complete a quiz. If documents exist but no quizzes have been completed, it prompts you to complete a quiz. Once quiz results exist, weak-topic diagnostics and the accuracy rule appear." },
       { term: "Smart Practice", desc: "Clicking 'Practice' on any weak topic immediately generates a fresh quiz focusing on that specific area." },
       { term: "Achieving Mastery", desc: "Once you score 60% or higher on a weak topic, its status updates to Good or Strong, clearing the weak topic flag." },
     ],
@@ -100,9 +101,9 @@ const SECTIONS: Section[] = [
     emoji: "🗑️",
     title: "Deleting Data & Confirmation",
     items: [
-      { term: "Delete Document", desc: "Permanently deletes the PDF file, its search data, all associated chat sessions and messages, and all generated quizzes and attempts. This action is irreversible." },
+      { term: "Delete Document", desc: "Permanently deletes the original PDF file, processed JSON and extracted text, document-specific temporary files, indexed Qdrant vectors, associated chat sessions and messages, and all generated quizzes and attempts. This action is irreversible." },
       { term: "Delete Chat Session", desc: "Permanently deletes the selected conversation thread and its message history. Your document, other chat sessions, and quizzes remain intact." },
-      { term: "Confirmation Required", desc: "All delete actions require explicit user confirmation to prevent accidental loss of study history or notes." },
+      { term: "Confirmation Required", desc: "All delete actions require explicit user confirmation through an in-app confirmation modal to prevent accidental loss of study history or notes." },
       { desc: "Quizzes are tied to their source document and are permanently cleaned up when the parent document is deleted." },
     ],
   },

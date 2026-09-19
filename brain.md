@@ -2343,6 +2343,23 @@ All updated components were verified across all three supported themes:
   - Header: Shows `"Weak Topics"`, detection count badge (if any weak topics detected), `"Weak = accuracy < 60%"` rule legend, and `"Go to Quizzes →"` link.
   - Body: Displays weak-topic cards (`< 60%` accuracy) with topic name, percentage, and "Practice" action button. If all completed quizzes scored `>= 60%`, shows `"No weak topics detected. All tested topics scored at or above 60% accuracy."`
 
+------------------------------------------------------------------------
+
+# 35. User Guide & Documentation Consistency Update
+
+### 1. Requirements & Scope Lock
+- **Scope**: Kept the student-facing User Guide (`components/UserGuideModal.tsx`) and `README.md` strictly synchronized with final verified application behavior.
+- **Preserved Structure**: No redesign, no restructuring, all headings and terminology preserved.
+
+### 2. Consistency Adjustments
+- **Weak Topic System**:
+  - Preserved exact rules: `accuracy < 60%` is Weak, `59%` = Weak, `60%` = NOT Weak.
+  - Clarified appearance lifecycle: Case 1 (no documents), Case 2 (documents exist, no quizzes completed), Case 3 (completed quiz results exist).
+- **Document Deletion Storage Layers**:
+  - Explicitly documents permanent deletion across all physical and vector storage layers: original PDF files, processed JSON and extracted text, temporary files matching `{document_id}*`, Qdrant vector points, chat sessions/messages, and quizzes/attempts.
+- **Confirmation Flow**:
+  - Updated description to state that all delete actions require explicit user confirmation through an in-app confirmation modal, with no browser-native dialogs or React implementation jargon mentioned.
+
 
 
 

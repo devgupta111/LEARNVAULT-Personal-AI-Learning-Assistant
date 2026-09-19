@@ -52,7 +52,7 @@ An agentic, full-stack learning assistant that enables students to upload lectur
   - Drag-and-drop PDF upload with filename display, formatted file size, and file validation.
   - **Upload Limit**: Supports text-based PDF files up to **20 MB**.
   - Asynchronous extraction and processing pipeline (`PROCESSING` ➔ `READY` / `FAILED`).
-  - Cascading deletion permanently cleaning database records, physical uploads, and Qdrant vector points with strict user authorization.
+  - Cascading deletion with an in-app confirmation dialog, permanently removing original PDF files, processed JSON files, temporary files, Qdrant vectors, chat history, and quizzes across all storage layers.
 
 - **Grounded Conversational RAG**:
   - Top-15 Qdrant vector retrieval filtered by authenticated `user_id` and `document_id`.
@@ -69,6 +69,7 @@ An agentic, full-stack learning assistant that enables students to upload lectur
     - **Strong**: 80%–100%
     - **Good**: 60%–79%
     - **Needs Practice / Weak**: `< 60%` (explicit rule: 59% is weak, 60% is not weak).
+    - Context-aware Dashboard Weak Topics analysis displayed once actual quiz performance data exists.
   - Inline quiz topic rename in Quiz History table.
   - **Show Incorrect Answers Only**: Post-submission toggle filter for targeted revision without modifying scores or stored attempts.
 
