@@ -31,6 +31,11 @@ from app.models.quiz import Quiz
 from app.models.quiz_attempt import QuizAttempt
 from app.models.user import User
 from app.services.qdrant_service import delete_user_vectors
+from app.services.supabase_storage_service import (
+    is_supabase_configured,
+    delete_document_file,
+    delete_user_storage_files,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +205,22 @@ def cleanup_guest_data(guest_user_id: str, db: Session) -> Dict[str, Any]:
     upload_dir = Path(settings.UPLOAD_DIR)
     proc_dir = Path(settings.PROCESSED_DIR)
 
+    # 5a. Supabase Storage Deletions (strictly scoped to guest user)
+    deleted_storage_files = 0
+    if is_supabase_configured():
+        for fp in doc_file_paths:
+            if fp and fp.startswith("documents/"):
+                try:
+                    if delete_document_file(fp):
+                        deleted_storage_files += 1
+                except Exception as exc:
+                    warnings.append(f"Supabase storage doc cleanup notice: {exc}")
+        try:
+            extra_purged = delete_user_storage_files(clean_id)
+            deleted_storage_files += extra_purged
+        except Exception as exc:
+            warnings.append(f"Supabase storage user files cleanup notice: {exc}")
+
     for doc_id in doc_ids:
         # PDF upload
         pdf_path = upload_dir / f"{doc_id}.pdf"
@@ -240,7 +261,7 @@ def cleanup_guest_data(guest_user_id: str, db: Session) -> Dict[str, Any]:
 
     logger.info(
         "Guest cleanup completed for guest_id=%s: "
-        "docs=%d, sessions=%d, msgs=%d, quizzes=%d, attempts=%d, files=%d, vectors=%d",
+        "docs=%d, sessions=%d, msgs=%d, quizzes=%d, attempts=%d, files=%d, storage_files=%d, vectors=%d",
         clean_id,
         deleted_documents,
         deleted_sessions,
@@ -248,6 +269,7 @@ def cleanup_guest_data(guest_user_id: str, db: Session) -> Dict[str, Any]:
         deleted_quizzes,
         deleted_attempts,
         deleted_files,
+        deleted_storage_files,
         deleted_vectors,
     )
 
@@ -261,6 +283,8 @@ def cleanup_guest_data(guest_user_id: str, db: Session) -> Dict[str, Any]:
         "deleted_attempts": deleted_attempts,
         "deleted_users": deleted_users,
         "deleted_files": deleted_files,
+        "deleted_storage_files": deleted_storage_files,
         "deleted_vectors": deleted_vectors,
         "warnings": warnings,
     }
+

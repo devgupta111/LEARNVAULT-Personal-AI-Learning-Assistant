@@ -2400,6 +2400,31 @@ All updated components were verified across all three supported themes:
   - TypeScript (`npx tsc --noEmit`): 0 errors.
   - Production build (`npm run build`): 10/10 static routes generated cleanly.
 
+---
+
+## Supabase Storage Integration (Persistent PDF Backend) ✅ COMPLETE (2026-09-20)
+
+### Motivation & Problem:
+Render Free tier runs on an ephemeral container filesystem where local files are wiped upon restarts and redeployments. While Qdrant Cloud and PostgreSQL (Neon) persistently preserve chunk embeddings and document records, the original uploaded PDF files require an external persistent object store.
+
+### Architecture & Security:
+- **Provider & Bucket**: Supabase Storage using the private bucket `learnvault-documents`.
+- **Backend-Only Security**: Uses `SUPABASE_URL` and `SUPABASE_SECRET_KEY`. Strictly backend-only; never exposed to frontend code or client bundles.
+- **Deterministic Storage Path**: `documents/{user_id}/{document_id}.pdf`.
+- **Ephemeral Local Processing Cache**:
+  - Render container filesystem is temporary only.
+  - Uploaded PDFs are temporarily cached in `data/uploads/{document_id}.pdf` for PyMuPDF text extraction.
+  - Upon processing completion (or cold-container on-demand download), temporary local PDFs are cleaned up to prevent local container disk bloat.
+  - Permanent PDF copy resides securely in private Supabase Storage.
+- **Task Queue Clarification**:
+  - Redis and Celery are NOT currently wired into the active production implementation; document processing runs via FastAPI in-process `BackgroundTasks` to support single-instance deployment on Render Free without additional infrastructure cost.
+- **Cascading Lifecycle Cleanup**:
+  - `DELETE /documents/{id}` deletes the object from Supabase Storage alongside Qdrant vectors, DB records, and local JSONs.
+  - `cleanup_guest_data` purges guest documents from Supabase Storage using prefix `documents/{guest_id}/`.
+- **Quality Assurance**:
+  - Created `backend/tests/test_supabase_storage.py` with 15 focused tests (mocked Supabase client).
+  - Total automated test suite: 259 tests (**245 passed, 14 skipped** for optional local Docker services, **0 failures**).
+
 
 
 

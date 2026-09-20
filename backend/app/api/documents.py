@@ -38,6 +38,12 @@ from app.services.document_service import (
 )
 from app.services.qdrant_service import delete_document_vectors
 from app.api.auth import get_current_user
+from app.services.supabase_storage_service import (
+    is_supabase_configured,
+    upload_document_file,
+    download_document_file,
+    delete_document_file,
+)
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 logger = logging.getLogger(__name__)
@@ -62,15 +68,41 @@ def process_document_background(
       - Embedding generation (Day 2 embedding_service)
       - Local JSON output to data/processed/
 
-    This function creates its own database session because FastAPI background
-    tasks run after the HTTP response is sent.
-    SessionLocal is a module-level variable so tests can patch it.
+    If the local temporary PDF is missing (e.g. cold container / server restart),
+    it is downloaded from private Supabase Storage on-demand.
+    Upon successful extraction, temporary local PDFs are cleaned up to prevent
+    ephemeral disk bloat in production.
     """
     db = SessionLocal()
+    local_path = Path(file_path)
+
     try:
+        # If local file does not exist, fetch from Supabase Storage
+        if not local_path.exists():
+            doc = get_document_by_id(db, document_id)
+            if (
+                doc
+                and doc.file_path
+                and doc.file_path.startswith("documents/")
+                and is_supabase_configured()
+            ):
+                logger.info(
+                    "Local processing file missing; downloading from Supabase Storage: %s",
+                    doc.file_path,
+                )
+                pdf_bytes = download_document_file(doc.file_path)
+                upload_dir = Path(settings.UPLOAD_DIR)
+                upload_dir.mkdir(parents=True, exist_ok=True)
+                local_path = upload_dir / f"{document_id}.pdf"
+                local_path.write_bytes(pdf_bytes)
+            else:
+                raise FileNotFoundError(
+                    f"PDF file not found locally or in storage: {file_path}"
+                )
+
         result = run_ingestion_pipeline(
             document_id=document_id,
-            file_path=file_path,
+            file_path=str(local_path),
             subject=subject,
             user_id=user_id,
         )
@@ -96,6 +128,14 @@ def process_document_background(
             status="FAILED",
             error_message=str(exc),
         )
+        if is_supabase_configured():
+            doc = get_document_by_id(db, document_id)
+            if doc and doc.file_path and doc.file_path.startswith("documents/"):
+                try:
+                    delete_document_file(doc.file_path)
+                    logger.info("Cleaned up Supabase storage object for failed document %s", document_id)
+                except Exception as cleanup_exc:
+                    logger.warning("Notice cleaning Supabase object on failure: %s", cleanup_exc)
     except Exception as exc:
         logger.exception("Unexpected pipeline error for document %s", document_id)
         update_document_status(
@@ -104,7 +144,22 @@ def process_document_background(
             status="FAILED",
             error_message="An unexpected error occurred during processing.",
         )
+        if is_supabase_configured():
+            doc = get_document_by_id(db, document_id)
+            if doc and doc.file_path and doc.file_path.startswith("documents/"):
+                try:
+                    delete_document_file(doc.file_path)
+                    logger.info("Cleaned up Supabase storage object for failed document %s", document_id)
+                except Exception as cleanup_exc:
+                    logger.warning("Notice cleaning Supabase object on failure: %s", cleanup_exc)
     finally:
+        # Clean up temporary local PDF cache when Supabase Storage is active
+        if is_supabase_configured() and local_path.exists():
+            try:
+                local_path.unlink(missing_ok=True)
+                logger.info("Cleaned up temporary local PDF cache: %s", local_path)
+            except OSError as exc:
+                logger.warning("Notice cleaning temporary local PDF %s: %s", local_path, exc)
         db.close()
 
 
@@ -119,8 +174,9 @@ async def upload_document(
     """
     Upload a PDF document.
 
-    Validates the file, saves it to disk, creates a database record with
-    status PROCESSING, and starts background text extraction.
+    Validates the file, uploads it persistently to Supabase Storage (if configured),
+    caches it to temporary disk for background extraction, creates a database record
+    with status PROCESSING, and starts background extraction.
 
     Returns HTTP 202 immediately so the client does not wait for extraction.
     Derives user_id strictly from the authenticated token/dependency.
@@ -157,20 +213,40 @@ async def upload_document(
 
     upload_dir = Path(settings.UPLOAD_DIR)
     upload_dir.mkdir(parents=True, exist_ok=True)
-    file_path = upload_dir / f"{document_id}.pdf"
+    temp_file_path = upload_dir / f"{document_id}.pdf"
 
+    # Save to local temporary processing path
     try:
-        file_path.write_bytes(content)
+        temp_file_path.write_bytes(content)
     except OSError as exc:
-        logger.error("Failed to save uploaded file: %s", exc)
+        logger.error("Failed to save temporary uploaded file: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to save the uploaded file.")
+
+    # Upload to Supabase Storage if configured
+    storage_path = None
+    if is_supabase_configured():
+        try:
+            storage_path = upload_document_file(
+                user_id=current_user,
+                document_id=document_id,
+                content=content,
+            )
+        except Exception as exc:
+            temp_file_path.unlink(missing_ok=True)
+            logger.error("Failed to upload document to Supabase Storage: %s", exc)
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to upload document to persistent storage.",
+            )
+
+    doc_file_path = storage_path if storage_path else str(temp_file_path)
 
     doc = Document(
         id=document_id,
         user_id=current_user,
         filename=file.filename,
         subject=subject,
-        file_path=str(file_path),
+        file_path=doc_file_path,
         status="PROCESSING",
     )
 
@@ -179,14 +255,19 @@ async def upload_document(
         db.commit()
         db.refresh(doc)
     except Exception as exc:
-        file_path.unlink(missing_ok=True)
+        temp_file_path.unlink(missing_ok=True)
+        if storage_path and is_supabase_configured():
+            try:
+                delete_document_file(storage_path)
+            except Exception:
+                pass
         logger.error("Database error saving document: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to create document record.")
 
     background_tasks.add_task(
         process_document_background,
         document_id,
-        str(file_path),
+        str(temp_file_path),
         subject,
         current_user,
     )
@@ -320,7 +401,17 @@ def delete_document(
 
     db.commit()
 
-    # Step 6: Delete uploaded PDF, processed JSON, and document temporary files
+    # Step 6: Delete from Supabase Storage if configured
+    if doc.file_path and doc.file_path.startswith("documents/") and is_supabase_configured():
+        try:
+            delete_document_file(doc.file_path)
+            logger.info("Deleted document from Supabase Storage: %s", doc.file_path)
+        except Exception as exc:
+            msg = f"Supabase storage cleanup notice: {exc}"
+            logger.warning(msg)
+            cleanup_warnings.append(msg)
+
+    # Step 6b: Delete uploaded PDF, processed JSON, and document temporary files from disk
     upload_dir = Path(settings.UPLOAD_DIR)
     proc_dir = Path(settings.PROCESSED_DIR)
 
@@ -328,7 +419,7 @@ def delete_document(
         upload_dir / f"{document_id}.pdf",
         proc_dir / f"{document_id}.json",
     }
-    if doc.file_path:
+    if doc.file_path and not doc.file_path.startswith("documents/"):
         paths_to_clean.add(Path(doc.file_path))
 
     # Clean up any temporary files matching {document_id}* in upload_dir or proc_dir

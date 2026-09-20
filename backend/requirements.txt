@@ -28,3 +28,6 @@ flashrank>=0.2.0
 # Day 7 — Google Identity Services verification
 google-auth>=2.0.0
 
+# Persistent PDF Storage — Supabase Storage Client (private bucket)
+supabase>=2.0.0
+

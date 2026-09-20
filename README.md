@@ -92,8 +92,10 @@ An agentic, full-stack learning assistant that enables students to upload lectur
 | :--- | :--- | :--- |
 | **Frontend** | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4 | Responsive UI, SSE token streaming, theme engine |
 | **Backend** | FastAPI, Python 3.10+, Pydantic v2, SQLAlchemy | Async REST APIs, SSE streaming, authentication |
+| **Task Queue** | FastAPI `BackgroundTasks` | In-process asynchronous document ingestion (Redis & Celery are NOT wired into the active implementation) |
 | **Vector DB** | Qdrant | 384-dimensional dense semantic search (Docker or local embedded) |
 | **Database** | PostgreSQL / SQLite | User profiles, document metadata, chat history, quiz attempts |
+| **Object Storage** | Supabase Storage (Private) | Persistent PDF storage in private bucket `learnvault-documents` (Render local filesystem is ephemeral/temporary) |
 | **Embeddings** | `sentence-transformers` (`all-MiniLM-L6-v2`) | Runs 100% locally and offline (384-dim float vectors) |
 | **Reranker** | FlashRank (`ms-marco-TinyBERT-L-2-v2`) | Local cross-encoder reranking without external API calls |
 | **LLM Engine** | Groq API (`openai/gpt-oss-120b`, `llama-3.1-8b-instant`) | Fast inference for RAG generation and bounded agents |
@@ -186,10 +188,11 @@ docker compose up -d
 ## Quality Assurance & Verification
 
 ### Pre-Deployment Verification
-All 244 automated regression and unit tests were executed with a 100% pass rate (230 passed, 14 skipped for optional local Docker services, 0 failures):
+All 259 automated regression and unit tests were executed with a 100% pass rate (245 passed, 14 skipped for optional local Docker services, 0 failures):
 - PDF extraction and scanned-page detection
 - Cleaning, chunking, and metadata validation
 - Embeddings and Qdrant lifecycle
+- Supabase Storage operations (persistent PDF upload, download, cascade deletion, guest purge)
 - Core RAG, refusal, and conversational history
 - Router & CRAG Agents
 - Grader & Adaptive Quiz Agents
@@ -229,6 +232,7 @@ npm run build      # TypeScript validation + Next.js production build
 ## Security & Privacy Guidelines
 
 - **No Secrets in Repository**: `.env` is ignored by `.gitignore`. Real API keys, passwords, and private tokens must never be committed.
+- **Backend-Only Storage Credentials**: `SUPABASE_SECRET_KEY` is strictly server-side and never exposed to the frontend, logs, or repository. The storage bucket `learnvault-documents` is private.
 - **Data Isolation**: All database queries and vector searches strictly enforce `user_id == authenticated_user`.
 - **Read-Only Profile Fields**: User emails are immutable and read-only.
 - **Client Identification**: Google Identity Services uses Web Client IDs (`GOOGLE_CLIENT_ID`) configured with authorized origins.

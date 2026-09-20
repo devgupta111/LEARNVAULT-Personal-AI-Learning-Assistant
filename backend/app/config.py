@@ -72,6 +72,13 @@ class Settings(BaseSettings):
     CORS_ORIGIN_REGEX: Optional[str] = r"https:\/\/.*\.vercel\.app"
     FRONTEND_URL: Optional[str] = None
 
+    # Supabase Storage — Persistent PDF storage backend (Render ephemeral disk solution)
+    # The bucket 'learnvault-documents' must remain PRIVATE.
+    # SUPABASE_SECRET_KEY is strictly backend-only (never exposed to client/browser).
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_SECRET_KEY: Optional[str] = None
+    SUPABASE_BUCKET_NAME: str = "learnvault-documents"
+
     @field_validator("UPLOAD_DIR", "PROCESSED_DIR", mode="after")
     @classmethod
     def resolve_directory_paths(cls, v: str) -> str:
