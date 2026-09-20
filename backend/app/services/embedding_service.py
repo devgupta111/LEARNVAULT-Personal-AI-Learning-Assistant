@@ -1,75 +1,72 @@
 """
 services/embedding_service.py
 
-Local embedding generation using Sentence Transformers.
+Lightweight embedding generation using FastEmbed (ONNX Runtime).
+Replaces heavy PyTorch/SentenceTransformers to operate reliably within
+Render Free's 512 MB RAM ceiling.
 
-Model: all-MiniLM-L6-v2
-  - 384-dimensional output vectors
-  - Runs entirely locally, no API key required
-  - Downloads model files from Hugging Face on first use (~90 MB, cached)
-  - Well-maintained and benchmarked for semantic similarity tasks
+Model: sentence-transformers/all-MiniLM-L6-v2
+  - 384-dimensional normalized output vectors (unit length)
+  - 100% semantically compatible with existing Qdrant vectors and cosine similarity
+  - Powered by ONNX Runtime instead of PyTorch (saves ~300+ MB RAM)
+  - Zero PyTorch dependency, preventing OOM kills on Render Free
 
 Design decisions:
-  - Singleton model loading: the model is loaded once per process and
-    reused for all subsequent calls. This avoids the ~2-3 second startup
-    cost per batch.
-  - Batch size 32: matches brain.md specification. Processing in batches
-    avoids loading all chunks into memory simultaneously.
+  - Singleton model loading: the FastEmbed model is loaded once per process and
+    reused for all subsequent calls.
+  - Batch size 32: matches brain.md specification.
   - Returns plain Python lists of floats so output is JSON-serializable.
-  - The embedding model can be changed by updating EMBEDDING_MODEL_NAME
-    without rewriting any calling code.
 """
 
 import logging
-from typing import List, Optional
-import numpy as np
+from typing import List, Optional, Any
 
 logger = logging.getLogger(__name__)
 
-EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_DIMENSION = 384
 BATCH_SIZE = 32
 
-_model = None
+_model: Optional[Any] = None
 
 
 def _get_model():
     """
-    Lazily load and return the sentence-transformers model.
-
-    The model is loaded on first call and cached for subsequent calls.
-    This is safe for single-process use (FastAPI with a single worker or
-    background tasks in the same process).
+    Lazily load and return the FastEmbed TextEmbedding model singleton.
+    Logs model initialization progress clearly for production diagnostics.
     """
     global _model
     if _model is None:
-        from sentence_transformers import SentenceTransformer
-        logger.info("Loading embedding model: %s", EMBEDDING_MODEL_NAME)
-        _model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-        dim = _model.get_embedding_dimension()
-        logger.info("Embedding model loaded. Vector dimension: %d", dim)
+        from fastembed import TextEmbedding
+        logger.info("Embedding model initialization started: %s", EMBEDDING_MODEL_NAME)
+        _model = TextEmbedding(model_name=EMBEDDING_MODEL_NAME)
+        logger.info(
+            "Embedding model initialized. Vector dimension: %d",
+            EMBEDDING_DIMENSION,
+        )
     return _model
 
 
 def get_embedding_model():
-    """Return the underlying SentenceTransformer model instance (loads on first call)."""
+    """Return the underlying FastEmbed TextEmbedding model instance (loads on first call)."""
     return _get_model()
 
 
 def get_embedding_dimension() -> int:
-    """Return the vector dimension for the current model."""
-    return _get_model().get_embedding_dimension()
+    """Return the vector dimension for the current model (384 for all-MiniLM-L6-v2)."""
+    return EMBEDDING_DIMENSION
 
 
 def embed_texts(texts: List[str]) -> List[List[float]]:
     """
-    Generate embeddings for a list of text strings.
+    Generate 384-d normalized embeddings for a list of text strings using FastEmbed (ONNX).
 
     Args:
         texts: List of non-empty strings to embed.
 
     Returns:
         List of float vectors, one per input text.
-        Each vector has length equal to get_embedding_dimension().
+        Each vector has length equal to 384 (EMBEDDING_DIMENSION).
 
     Raises:
         ValueError: If texts is empty.
@@ -79,28 +76,16 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
         raise ValueError("embed_texts received an empty list")
 
     model = _get_model()
-    all_vectors = []
+    all_vectors: List[List[float]] = []
 
-    for batch_start in range(0, len(texts), BATCH_SIZE):
-        batch = texts[batch_start : batch_start + BATCH_SIZE]
-        try:
-            vectors = model.encode(
-                batch,
-                convert_to_numpy=True,
-                show_progress_bar=False,
-                normalize_embeddings=True,
-            )
-            all_vectors.extend(vectors.tolist())
-        except Exception as exc:
-            logger.error(
-                "Embedding batch %d-%d failed: %s",
-                batch_start,
-                batch_start + len(batch),
-                exc,
-            )
-            raise RuntimeError(
-                f"Embedding generation failed for batch starting at {batch_start}"
-            ) from exc
+    try:
+        # FastEmbed.embed returns a generator yielding numpy ndarrays (normalized)
+        embeddings_iter = model.embed(texts, batch_size=BATCH_SIZE)
+        for emb in embeddings_iter:
+            all_vectors.append(emb.tolist())
+    except Exception as exc:
+        logger.error("FastEmbed embedding generation failed: %s", exc)
+        raise RuntimeError(f"Embedding generation failed: {exc}") from exc
 
     return all_vectors
 
@@ -111,7 +96,7 @@ def embed_chunks(children: List[dict]) -> List[dict]:
 
     Args:
         children: List of child chunk dicts from chunking_service.generate_chunks().
-                  Each must have a non-empty 'text' field.
+                  Each must have a 'text' field.
 
     Returns:
         New list of child dicts with 'embedding' added. Input is not mutated.
@@ -122,6 +107,12 @@ def embed_chunks(children: List[dict]) -> List[dict]:
 
     valid_indices = [i for i, c in enumerate(children) if c.get("text", "").strip()]
     texts = [children[i]["text"] for i in valid_indices]
+
+    logger.info(
+        "Embedding started: %d child chunks (%d non-empty)",
+        len(children),
+        len(texts),
+    )
 
     if not texts:
         return [dict(c, embedding=[]) for c in children]
@@ -134,5 +125,11 @@ def embed_chunks(children: List[dict]) -> List[dict]:
         new_child = dict(child)
         new_child["embedding"] = vector_map.get(i, [])
         result.append(new_child)
+
+    logger.info(
+        "Embedding completed: embedded %d chunks (dimension: %d)",
+        len(result),
+        EMBEDDING_DIMENSION,
+    )
 
     return result

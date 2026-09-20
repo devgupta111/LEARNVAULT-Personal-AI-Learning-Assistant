@@ -1,4 +1,4 @@
-﻿"""
+"""
 tests/test_embedding_service.py
 
 Unit tests for embedding_service.py (Day 2).
@@ -142,3 +142,37 @@ class TestEmbedChunks:
         chunks = [self.make_child("c-001", "")]
         result = embed_chunks(chunks)
         assert result[0]["embedding"] == []
+
+
+class TestFastEmbedIntegration:
+    """Verify FastEmbed-specific behavior and diagnostic logging."""
+
+    def test_fastembed_model_instance_and_dimension(self):
+        from app.services.embedding_service import get_embedding_model, get_embedding_dimension
+        from fastembed import TextEmbedding
+
+        model = get_embedding_model()
+        assert isinstance(model, TextEmbedding)
+        assert get_embedding_dimension() == 384
+
+    def test_fastembed_logging_output(self, caplog):
+        import logging
+        from app.services.embedding_service import embed_chunks
+
+        chunk = {
+            "chunk_id": "c-log-1",
+            "parent_id": "p-1",
+            "document_id": "d-1",
+            "text": "Logging verification for FastEmbed production diagnostics.",
+        }
+
+        with caplog.at_level(logging.INFO):
+            result = embed_chunks([chunk])
+
+        assert len(result) == 1
+        assert len(result[0]["embedding"]) == 384
+        # Verify production log entries exist
+        log_text = caplog.text
+        assert "Embedding started:" in log_text
+        assert "Embedding completed:" in log_text
+
