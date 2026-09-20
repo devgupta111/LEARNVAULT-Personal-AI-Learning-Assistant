@@ -186,7 +186,7 @@ docker compose up -d
 ## Quality Assurance & Verification
 
 ### Pre-Deployment Verification
-All 237 automated regression and unit tests were executed and passed with a 100% pass rate prior to production deployment (preserved in git commit history):
+All 244 automated regression and unit tests were executed with a 100% pass rate (230 passed, 14 skipped for optional local Docker services, 0 failures):
 - PDF extraction and scanned-page detection
 - Cleaning, chunking, and metadata validation
 - Embeddings and Qdrant lifecycle

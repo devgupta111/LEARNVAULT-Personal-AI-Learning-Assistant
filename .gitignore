@@ -62,6 +62,8 @@ frontend/node_modules/
 frontend/.next/
 frontend/.env.local
 frontend/.env*.local
+frontend/AGENTS.md
+frontend/CLAUDE.md
 
 # Docker & Logs
 *.log

@@ -2381,6 +2381,26 @@ All updated components were verified across all three supported themes:
   - Backend API health: Verified operational (`/health` returns `{"status":"ok"}`).
   - Documentation synchronized across `README.md` and `brain.md`.
 
+---
+
+## Pre-Deployment Verification & Final Repository Cleanup ✅ COMPLETE (2026-09-20)
+
+### Actions Taken:
+- **Restored Legitimate Automated Tests**:
+  - Maintained complete regression test suite (`backend/tests/` and `backend/pytest.ini`).
+  - Ran `pytest` across all 244 collected tests: **230 passed, 14 skipped** (for optional local Docker services), **0 failures**.
+- **Removed Obsolete / Deprecated Code**:
+  - Safely removed Day 1 deprecated `backend/app/services/extraction_service.py` (replaced by `pdf_service.py`).
+  - Safely removed Day 4 agent stubs `backend/app/agents/` (`crag_agent.py`, `query_router.py`, `__init__.py`), confirming all active agents run under `backend/app/services/`.
+- **Environment & Build Hygiene**:
+  - Added Next.js 16 agent file rules (`frontend/AGENTS.md`, `frontend/CLAUDE.md`) to `.gitignore`.
+  - Verified no secrets in tracked files or repository history.
+- **Frontend Quality Assurance**:
+  - ESLint (`npm run lint`): 0 errors, 0 warnings.
+  - TypeScript (`npx tsc --noEmit`): 0 errors.
+  - Production build (`npm run build`): 10/10 static routes generated cleanly.
+
+
 
 
 
