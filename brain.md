@@ -1270,7 +1270,7 @@ unless implementation evidence requires it.
   - Safe fallback: On CRAG model failure, timeout, or invalid output, immediately returns the standard Day-4 refusal. Never loops or retries more than once.
   - Centralized retrieval reuse: CRAG retry reuses the identical `search_and_rerank` pipeline with authenticated `user_id` and `document_id` security filters strictly enforced.
 - **Configuration & Provider Isolation (`app/config.py`, `.env.example`)**:
-  - Dedicated configuration settings added: `ROUTER_API_KEY`, `ROUTER_MODEL` (default: `llama-3.1-8b-instant`), `CRAG_API_KEY`, `CRAG_MODEL` (default: `llama-3.1-8b-instant`).
+  - Dedicated configuration settings added: `ROUTER_API_KEY`, `ROUTER_MODEL` (default: `openai/gpt-oss-120b`), `CRAG_API_KEY`, `CRAG_MODEL` (default: `openai/gpt-oss-120b`).
   - Seamless fallback to `RAG_API_KEY` when dedicated router/CRAG keys are not specified.
   - Never hardcodes or logs API keys.
 - **Chat Endpoint Integration (`app/api/chat.py`)**:

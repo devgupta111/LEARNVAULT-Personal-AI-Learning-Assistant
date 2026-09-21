@@ -98,7 +98,7 @@ An agentic, full-stack learning assistant that enables students to upload lectur
 | **Object Storage** | Supabase Storage (Private) | Persistent PDF storage in private bucket `learnvault-documents` (Render local filesystem is ephemeral/temporary) |
 | **Embeddings** | `sentence-transformers` (`all-MiniLM-L6-v2`) | Runs 100% locally and offline (384-dim float vectors) |
 | **Reranker** | FlashRank (`ms-marco-TinyBERT-L-2-v2`) | Local cross-encoder reranking without external API calls |
-| **LLM Engine** | Groq API (`openai/gpt-oss-120b`, `llama-3.1-8b-instant`) | Fast inference for RAG generation and bounded agents |
+| **LLM Engine** | Groq API (`openai/gpt-oss-120b`) | Fast inference for RAG generation and bounded agents |
 | **PDF Engine** | PyMuPDF (`fitz`) | High-fidelity page extraction and scan detection |
 
 ---

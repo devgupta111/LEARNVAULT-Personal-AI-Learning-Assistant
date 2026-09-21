@@ -370,7 +370,7 @@ class TestQuizGenerationAndWeakTopics:
         with patch("app.services.quiz_service._get_quiz_client") as mock_client_factory:
             mock_client = MagicMock()
             mock_client.chat.completions.create.return_value = mock_response
-            mock_client_factory.return_value = (mock_client, "llama-3.1-8b-instant")
+            mock_client_factory.return_value = (mock_client, "openai/gpt-oss-120b")
 
             questions = generate_quiz_questions(
                 topic="Normalization",
@@ -395,7 +395,7 @@ class TestQuizGenerationAndWeakTopics:
         with patch("app.services.quiz_service._get_quiz_client") as mock_client_factory:
             mock_client = MagicMock()
             mock_client.chat.completions.create.return_value = mock_resp_garbage
-            mock_client_factory.return_value = (mock_client, "llama-3.1-8b-instant")
+            mock_client_factory.return_value = (mock_client, "openai/gpt-oss-120b")
 
             with pytest.raises(RuntimeError):
                 generate_quiz_questions(topic="Testing", parent_results=fake_parents, num_questions=1)
@@ -410,7 +410,7 @@ class TestQuizGenerationAndWeakTopics:
         with patch("app.services.quiz_service._get_quiz_client") as mock_client_factory:
             mock_client = MagicMock()
             mock_client.chat.completions.create.return_value = mock_resp_partial
-            mock_client_factory.return_value = (mock_client, "llama-3.1-8b-instant")
+            mock_client_factory.return_value = (mock_client, "openai/gpt-oss-120b")
 
             questions = generate_quiz_questions(topic="T", parent_results=fake_parents, num_questions=1)
             assert len(questions) == 1

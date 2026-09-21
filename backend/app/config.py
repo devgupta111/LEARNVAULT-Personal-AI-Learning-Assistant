@@ -49,19 +49,19 @@ class Settings(BaseSettings):
 
     # Day 5 — Query Router & Rewriter Agent (dedicated credentials with RAG fallback)
     ROUTER_API_KEY: Optional[str] = None
-    ROUTER_MODEL: str = "llama-3.1-8b-instant"
+    ROUTER_MODEL: str = "openai/gpt-oss-120b"
 
     # Day 5 — CRAG Agent (dedicated credentials with RAG fallback)
     CRAG_API_KEY: Optional[str] = None
-    CRAG_MODEL: str = "llama-3.1-8b-instant"
+    CRAG_MODEL: str = "openai/gpt-oss-120b"
 
     # Day 6 — Hallucination & Citation Grader (dedicated credentials with RAG fallback)
     GRADER_API_KEY: Optional[str] = None
-    GRADER_MODEL: str = "llama-3.1-8b-instant"
+    GRADER_MODEL: str = "openai/gpt-oss-120b"
 
     # Day 6 — Adaptive Quiz & Diagnostic Agent (dedicated credentials with RAG fallback)
     QUIZ_API_KEY: Optional[str] = None
-    QUIZ_MODEL: str = "llama-3.1-8b-instant"
+    QUIZ_MODEL: str = "openai/gpt-oss-120b"
 
     # Day 7 — Google Identity Services Client ID
     GOOGLE_CLIENT_ID: str = "345444138884-bbigs9vt771fii89o3kf0ncs1snl01fu.apps.googleusercontent.com"

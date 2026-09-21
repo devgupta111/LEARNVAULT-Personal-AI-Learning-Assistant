@@ -53,7 +53,7 @@ def _get_crag_client() -> Tuple[object, str]:
     Obtain the Groq client and model name for CRAG query reformulation.
 
     Uses CRAG_API_KEY if configured; otherwise falls back to RAG_API_KEY.
-    Uses CRAG_MODEL (default: llama-3.1-8b-instant).
+    Uses CRAG_MODEL (default: openai/gpt-oss-120b).
 
     Raises:
         RuntimeError: If neither CRAG_API_KEY nor RAG_API_KEY is configured.
@@ -72,7 +72,7 @@ def _get_crag_client() -> Tuple[object, str]:
             "The 'groq' package is required. Install it with: pip install groq"
         ) from exc
 
-    model = settings.CRAG_MODEL or "llama-3.1-8b-instant"
+    model = settings.CRAG_MODEL or "openai/gpt-oss-120b"
     return client, model
 
 

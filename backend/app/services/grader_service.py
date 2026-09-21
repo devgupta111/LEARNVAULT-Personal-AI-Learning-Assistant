@@ -85,10 +85,11 @@ def _get_grader_client() -> Tuple[object, str]:
     Obtain the Groq client and model name for grading.
 
     Uses GRADER_API_KEY if configured; otherwise falls back to RAG_API_KEY.
-    Uses GRADER_MODEL (default: llama-3.1-8b-instant).
+    Uses GRADER_MODEL (default: openai/gpt-oss-120b).
 
     Raises:
         RuntimeError: If neither GRADER_API_KEY nor RAG_API_KEY is configured.
+            Set GRADER_API_KEY=<your-groq-api-key> in your .env file.
     """
     api_key = settings.GRADER_API_KEY or settings.RAG_API_KEY
     if not api_key:
@@ -105,7 +106,7 @@ def _get_grader_client() -> Tuple[object, str]:
             "The 'groq' package is required. Install it with: pip install groq"
         ) from exc
 
-    model = settings.GRADER_MODEL or "llama-3.1-8b-instant"
+    model = settings.GRADER_MODEL or "openai/gpt-oss-120b"
     logger.debug("Grader: using model=%s with GRADER_API_KEY", model)
     return client, model
 

@@ -80,10 +80,11 @@ def _get_quiz_client() -> Tuple[object, str]:
     Obtain the Groq client and model name for quiz generation.
 
     Uses QUIZ_API_KEY if configured; otherwise falls back to RAG_API_KEY.
-    Uses QUIZ_MODEL (default: llama-3.1-8b-instant).
+    Uses QUIZ_MODEL (default: openai/gpt-oss-120b).
 
     Raises:
         RuntimeError: If neither QUIZ_API_KEY nor RAG_API_KEY is configured.
+            Set QUIZ_API_KEY=<your-groq-api-key> in your .env file.
     """
     api_key = settings.QUIZ_API_KEY or settings.RAG_API_KEY
     if not api_key:
@@ -100,7 +101,7 @@ def _get_quiz_client() -> Tuple[object, str]:
             "The 'groq' package is required. Install it with: pip install groq"
         ) from exc
 
-    model = settings.QUIZ_MODEL or "llama-3.1-8b-instant"
+    model = settings.QUIZ_MODEL or "openai/gpt-oss-120b"
     logger.debug("Quiz: using model=%s with QUIZ_API_KEY", model)
     return client, model
 

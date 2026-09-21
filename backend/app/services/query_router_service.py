@@ -76,7 +76,7 @@ def _get_router_client() -> Tuple[object, str]:
     Obtain the Groq client and model name for query routing.
 
     Uses ROUTER_API_KEY if configured; otherwise falls back to RAG_API_KEY.
-    Uses ROUTER_MODEL (default: llama-3.1-8b-instant).
+    Uses ROUTER_MODEL (default: openai/gpt-oss-120b).
 
     Raises:
         RuntimeError: If neither ROUTER_API_KEY nor RAG_API_KEY is configured.
@@ -95,7 +95,7 @@ def _get_router_client() -> Tuple[object, str]:
             "The 'groq' package is required. Install it with: pip install groq"
         ) from exc
 
-    model = settings.ROUTER_MODEL or "llama-3.1-8b-instant"
+    model = settings.ROUTER_MODEL or "openai/gpt-oss-120b"
     return client, model
 
 
