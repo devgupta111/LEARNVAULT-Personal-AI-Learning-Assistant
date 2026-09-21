@@ -121,7 +121,7 @@ def _format_context_block(parent_results: List[Dict]) -> str:
             page_label = f"Page {page_start}"
         else:
             page_label = f"Page {page_start}-{page_end}"
-        text = ctx.get("parent_text", ctx.get("text", ""))
+        text = ctx.get("parent_text") or ctx.get("text") or ""
         # Truncate very long parent texts to stay within context budget
         remaining = MAX_CONTEXT_CHARS - total_chars
         if remaining <= 0:

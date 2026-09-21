@@ -438,7 +438,13 @@ def _generate_verified_answer(
     # ── Step 1: Query Router & Rewriter Agent ────────────────────────────────
     router_output = route_and_rewrite_query(query=user_message, history=history)
     selected_route = router_output.route
-    logger.info("Router: selected route='%s' for session=%s", selected_route, session_id)
+    retrieval_query = router_output.rewritten_query or user_message
+    logger.info(
+        "Router: selected route='%s', rewritten_query='%s' for session=%s",
+        selected_route,
+        retrieval_query,
+        session_id,
+    )
 
     # Path A: Direct Conversational Chat (no retrieval)
     if selected_route == "direct_chat":
@@ -469,8 +475,6 @@ def _generate_verified_answer(
         return answer, []
 
     # Path C: RAG Query with Document Retrieval
-    retrieval_query = router_output.rewritten_query or user_message
-
     try:
         parent_results, is_weak = search_and_rerank(
             query=retrieval_query,
@@ -495,7 +499,7 @@ def _generate_verified_answer(
     # Evidence check & CRAG Corrective Retrieval
     if is_weak:
         logger.info(
-            "Initial retrieval weak for session=%s (query='%s...'). Triggering CRAG Agent.",
+            "CRAG decision: TRIGGERED (initial retrieval weak for session=%s, query='%s'). Requesting alternative query.",
             session_id,
             retrieval_query[:50],
         )
@@ -519,17 +523,28 @@ def _generate_verified_answer(
         else:
             logger.info("CRAG: Alternative query generation failed or empty. Defaulting to refusal.")
             is_weak = True
+    else:
+        logger.info("CRAG decision: SKIPPED (initial retrieval strong for session=%s)", session_id)
 
     if is_weak:
-        logger.info("Evidence remains weak after CRAG for session=%s -> returning refusal", session_id)
+        logger.info(
+            "Final refusal reason: retrieval evidence weak after initial search and CRAG for session=%s -> returning refusal",
+            session_id,
+        )
         return REFUSAL_MESSAGE, []
 
     # Grounded LLM Generation
+    context_preview = [
+        f"[Parent {pr.get('parent_chunk_id', '?')[:8]} Page {pr.get('page_start')}-{pr.get('page_end')}]: {((pr.get('parent_text') or pr.get('text') or ''))[:100].replace(chr(10), ' ')}..."
+        for pr in parent_results
+    ]
     logger.info(
-        "Generating grounded answer from %d parent contexts for session=%s",
+        "Final context passed to LLM (%d parent contexts for session=%s): %s",
         len(parent_results),
         session_id,
+        context_preview,
     )
+
     try:
         answer = generate_rag_response(
             query=user_message,
@@ -558,6 +573,13 @@ def _generate_verified_answer(
         parent_results=parent_results,
         citations=raw_citations,
     )
+    logger.info(
+        "Grader initial evaluation: grounded=%s, confidence=%.2f, reason/critique='%s' for session=%s",
+        grader_result.grounded,
+        grader_result.confidence,
+        grader_result.critique or "",
+        session_id,
+    )
 
     if not grader_result.grounded:
         logger.info(
@@ -584,19 +606,23 @@ def _generate_verified_answer(
                 parent_results=parent_results,
                 citations=raw_citations,
             )
-            if regen_grader_result.grounded:
+            logger.info(
+                "Grader regenerated evaluation: grounded=%s, confidence=%.2f, reason/critique='%s' for session=%s",
+                regen_grader_result.grounded,
+                regen_grader_result.confidence,
+                regen_grader_result.critique or "",
+                session_id,
+            )
+            if not regen_grader_result.grounded:
                 logger.info(
-                    "Grader PASS after regeneration (confidence=%.2f) for session=%s",
+                    "Final refusal reason: Hallucination Grader rejected regenerated answer (confidence=%.2f, critique='%s') for session=%s",
                     regen_grader_result.confidence,
-                    session_id,
-                )
-            else:
-                logger.info(
-                    "Grader FAIL after regeneration (confidence=%.2f) for session=%s. Returning refusal.",
-                    regen_grader_result.confidence,
+                    regen_grader_result.critique or "",
                     session_id,
                 )
                 answer = None
+        else:
+            logger.info("Final refusal reason: LLM answer regeneration failed for session=%s", session_id)
 
         if answer is None:
             return REFUSAL_MESSAGE, []

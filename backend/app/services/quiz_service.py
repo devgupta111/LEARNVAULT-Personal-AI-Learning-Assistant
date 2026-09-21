@@ -247,7 +247,7 @@ def generate_quiz_questions(
     for i, ctx in enumerate(parent_results, start=1):
         page_start = ctx.get("page_start", "?")
         page_end = ctx.get("page_end", "?")
-        text = ctx.get("parent_text", ctx.get("text", ""))
+        text = ctx.get("parent_text") or ctx.get("text") or ""
         context_blocks.append(
             f"[Passage {i} | Page {page_start}-{page_end}]\n{text[:3000]}"
         )

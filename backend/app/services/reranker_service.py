@@ -102,13 +102,18 @@ def rerank_results(
     if not reranked:
         return [], True
 
+    reranker_scores = [round(item.get("score", 0.0), 4) for item in reranked]
+    logger.info("Reranker scores: %s", reranker_scores)
+
     # Determine if top evidence is weak
-    top_score = reranked[0].get("score", 0.0)
-    is_weak = top_score < threshold
+    top_score = float(reranked[0].get("score", 0.0))
+    is_weak = bool(top_score < threshold)
+    surviving_count = sum(1 for item in reranked if item.get("score", 0.0) >= threshold)
     logger.info(
-        "Reranker: top score=%.4f, threshold=%.4f, weak=%s",
+        "Reranker: top_score=%.4f, threshold=%.4f, surviving_chunks=%d, weak=%s",
         top_score,
         threshold,
+        surviving_count,
         is_weak,
     )
 
@@ -130,9 +135,11 @@ def rerank_results(
         if len(unique_parent_results) >= top_k:
             break
 
+    parent_ids = [pr.get("parent_chunk_id") for pr in unique_parent_results]
     logger.info(
-        "Reranker: returning %d unique parent contexts (is_weak=%s)",
+        "Reranker: returning %d unique parent contexts (parent_ids=%s, is_weak=%s)",
         len(unique_parent_results),
+        parent_ids,
         is_weak,
     )
     return unique_parent_results, is_weak
@@ -173,9 +180,12 @@ def search_and_rerank(
     from app.config import settings
     from qdrant_client.http import models as qdrant_models
 
+    logger.info("Search & Rerank query: '%s'", query[:120])
+
     # --- Embed query using the same model as ingestion ---
     try:
         query_vector = embed_texts([query])[0]
+        logger.info("Query embedding dimension: %d", len(query_vector))
     except Exception as exc:
         logger.error("Query embedding failed: %s", exc)
         raise RuntimeError(f"Failed to embed query: {exc}") from exc
@@ -183,6 +193,13 @@ def search_and_rerank(
     # --- Qdrant filtered search (security: must filter by both user_id and document_id) ---
     client = qdrant_client or get_qdrant_client()
     col = collection_name or settings.QDRANT_COLLECTION_NAME
+
+    logger.info(
+        "Qdrant retrieval filters: collection='%s', user_id='%s', document_id='%s'",
+        col,
+        user_id,
+        document_id,
+    )
 
     search_filter = qdrant_models.Filter(
         must=[
@@ -219,11 +236,17 @@ def search_and_rerank(
         logger.error("Qdrant search failed: %s", exc)
         raise RuntimeError(f"Qdrant search failed: {exc}") from exc
 
+    candidate_scores = [round(p.score, 4) for p in scored_points]
     logger.info(
-        "Qdrant search returned %d results for query='%s...'",
+        "Qdrant search returned %d candidates. Candidate scores: %s",
         len(scored_points),
-        query[:60],
+        candidate_scores,
     )
+
+    for idx, p in enumerate(scored_points[:3], start=1):
+        payload = p.payload or {}
+        chunk_preview = (payload.get("text") or payload.get("parent_text") or "")[:80].replace("\n", " ")
+        logger.info("  Candidate %d [id=%s, score=%.4f]: '%s...'", idx, p.id, p.score, chunk_preview)
 
     return rerank_results(
         query=query,

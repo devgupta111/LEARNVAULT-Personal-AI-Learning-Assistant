@@ -125,7 +125,7 @@ def _format_context_for_grader(parent_results: List[Dict]) -> str:
             page_label = f"Page {page_start}"
         else:
             page_label = f"Page {page_start}-{page_end}"
-        text = ctx.get("parent_text", ctx.get("text", ""))
+        text = ctx.get("parent_text") or ctx.get("text") or ""
         # Truncate very long texts to keep the grader prompt within limits
         blocks.append(f"[Source {i} | {page_label}]\n{text[:3000]}")
     return "\n\n".join(blocks)

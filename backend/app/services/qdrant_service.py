@@ -78,13 +78,19 @@ def get_qdrant_client(
 
     target_url = url or settings.QDRANT_URL
     target_key = api_key if api_key is not None else settings.QDRANT_API_KEY
+    is_remote = bool(target_key) or (
+        target_url
+        and not any(h in target_url.lower() for h in ("localhost", "127.0.0.1", "::1"))
+    )
 
-    # Try connecting to remote Qdrant server first
+    client_timeout = 10.0 if is_remote else 2.0
+
+    # Try connecting to Qdrant server first
     try:
         remote_client = QdrantClient(
             url=target_url,
             api_key=target_key,
-            timeout=1.5,
+            timeout=client_timeout,
         )
         # Fast health check to see if remote server is up
         remote_client.get_collections()
@@ -92,9 +98,21 @@ def get_qdrant_client(
         _active_client = remote_client
         return _active_client
     except Exception as exc:
+        if is_remote:
+            logger.error(
+                "Could not connect to remote Qdrant database at %s (timeout=%.1fs): %s. "
+                "Refusing silent fallback to empty local disk storage in remote mode.",
+                target_url,
+                client_timeout,
+                exc,
+            )
+            raise RuntimeError(
+                f"Failed to connect to configured remote Qdrant vector database at {target_url}: {exc}"
+            ) from exc
+
         LOCAL_QDRANT_PATH.mkdir(parents=True, exist_ok=True)
         logger.warning(
-            "Could not connect to Qdrant server at %s: %s. "
+            "Could not connect to local Qdrant server at %s: %s. "
             "Falling back to local embedded Qdrant storage at %s",
             target_url,
             exc,
