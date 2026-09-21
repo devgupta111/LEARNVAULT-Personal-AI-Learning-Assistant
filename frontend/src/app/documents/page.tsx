@@ -21,6 +21,7 @@ import { useToast } from "../../../components/Toast";
 import { deleteDocument, getDocuments, uploadDocument } from "../../../lib/api";
 import { DocumentSummary } from "../../../types";
 import DeleteConfirmModal from "../../../components/DeleteConfirmModal";
+import EditDocumentModal from "../../../components/EditDocumentModal";
 
 export default function DocumentsPage() {
   const { loading: authLoading } = useAuth(true);
@@ -33,6 +34,7 @@ export default function DocumentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  const [editingDoc, setEditingDoc] = useState<DocumentSummary | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; filename: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -498,6 +500,17 @@ export default function DocumentsPage() {
                           )}
                           <button
                             type="button"
+                            onClick={() => setEditingDoc(doc)}
+                            title="Edit document"
+                            aria-label="Edit document"
+                            className="p-1.5 rounded-lg transition-all text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a2 2 0 01-1.414.586H8v-2.414a2 2 0 01.586-1.414z" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => setDeleteTarget({ id: docId, filename: doc.filename })}
                             disabled={deletingDocId === docId}
                             title="Delete document"
@@ -525,6 +538,22 @@ export default function DocumentsPage() {
           if (!deletingDocId) {
             setDeleteTarget(null);
           }
+        }}
+      />
+
+      <EditDocumentModal
+        isOpen={Boolean(editingDoc)}
+        document={editingDoc}
+        onClose={() => setEditingDoc(null)}
+        onSuccess={(updatedDoc) => {
+          setDocuments((prev) =>
+            prev.map((d) =>
+              (d.document_id || d.id) === (updatedDoc.document_id || updatedDoc.id)
+                ? { ...d, filename: updatedDoc.filename, subject: updatedDoc.subject }
+                : d
+            )
+          );
+          toast.success("Document updated successfully.");
         }}
       />
     </div>

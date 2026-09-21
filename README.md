@@ -53,6 +53,15 @@ An agentic, full-stack learning assistant that enables students to upload lectur
   - **Upload Limit**: Supports text-based PDF files up to **20 MB**.
   - Asynchronous extraction and processing pipeline (`PROCESSING` ➔ `READY` / `FAILED`).
   - Cascading deletion with an in-app confirmation dialog, permanently removing original PDF files, processed JSON files, temporary files, Qdrant vectors, chat history, and quizzes across all storage layers.
+  - **Document Metadata Editing (`PATCH /documents/{id}`)**:
+    - In-app modal for updating display filename (max 60 chars) and subject (max 40 chars) with live character counters (`0/60`, `0/40`), blank validation, and whitespace trimming.
+    - **Safe Metadata Operation**: Strictly preserves document UUIDs, processing status, page count, original PDF files, Supabase storage paths, chunk embeddings, and Qdrant vectors.
+
+- **UI Consistency & Icon Standardization**:
+  - Every action whose purpose is **Edit**, **Rename**, or **Modify existing metadata** consistently uses the same **pencil icon** (`Heroicons pencil-square`, established by Chat Sessions).
+  - Used across Document editing (Documents page & Dashboard), Chat Session renaming, Quiz Topic renaming, and Profile editing.
+  - **Accessibility**: All icon-only controls provide explicit `aria-label`, tooltip `title`, visible focus rings (`focus-visible:ring-2`), and keyboard navigation support.
+  - **Preserved Existing Design**: Existing text buttons and core actions (`Chat`, `Quiz`, `Delete`, `Upload`, `Save`, `Cancel`, `Sign Out`, etc.) strictly preserve their established appearance, colors, and layout without unnecessary redesign.
 
 - **Grounded Conversational RAG**:
   - Top-15 Qdrant vector retrieval filtered by authenticated `user_id` and `document_id`.
@@ -96,7 +105,7 @@ An agentic, full-stack learning assistant that enables students to upload lectur
 | **Vector DB** | Qdrant | 384-dimensional dense semantic search (Docker or local embedded) |
 | **Database** | PostgreSQL / SQLite | User profiles, document metadata, chat history, quiz attempts |
 | **Object Storage** | Supabase Storage (Private) | Persistent PDF storage in private bucket `learnvault-documents` (Render local filesystem is ephemeral/temporary) |
-| **Embeddings** | `sentence-transformers` (`all-MiniLM-L6-v2`) | Runs 100% locally and offline (384-dim float vectors) |
+| **Embeddings** | FastEmbed (ONNX Runtime, `all-MiniLM-L6-v2`) | Lightweight local CPU inference (384-dim float vectors, low memory footprint) |
 | **Reranker** | FlashRank (`ms-marco-TinyBERT-L-2-v2`) | Local cross-encoder reranking without external API calls |
 | **LLM Engine** | Groq API (`openai/gpt-oss-120b`) | Fast inference for RAG generation and bounded agents |
 | **PDF Engine** | PyMuPDF (`fitz`) | High-fidelity page extraction and scan detection |
@@ -188,10 +197,11 @@ docker compose up -d
 ## Quality Assurance & Verification
 
 ### Pre-Deployment Verification
-All 259 automated regression and unit tests were executed with a 100% pass rate (245 passed, 14 skipped for optional local Docker services, 0 failures):
+All 273 automated regression and unit tests were executed with a 100% pass rate (259 passed, 14 skipped for optional local Docker services, 0 failures):
 - PDF extraction and scanned-page detection
-- Cleaning, chunking, and metadata validation
-- Embeddings and Qdrant lifecycle
+- Cleaning, chunking, and FastEmbed ONNX embeddings
+- Document metadata editing validation and safety (`PATCH /documents/{id}`)
+- Embeddings and Qdrant vector lifecycle
 - Supabase Storage operations (persistent PDF upload, download, cascade deletion, guest purge)
 - Core RAG, refusal, and conversational history
 - Router & CRAG Agents

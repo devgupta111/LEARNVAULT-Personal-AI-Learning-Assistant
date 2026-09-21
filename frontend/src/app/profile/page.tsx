@@ -228,9 +228,14 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={startEditing}
-                className="btn-primary px-4 py-2 rounded-xl text-xs font-semibold shadow-sm active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
+                title="Edit Profile"
+                aria-label="Edit Profile"
+                className="btn-primary px-4 py-2 rounded-xl text-xs font-semibold shadow-sm inline-flex items-center gap-1.5 active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
               >
-                Edit Profile
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a2 2 0 01-1.414.586H8v-2.414a2 2 0 01.586-1.414z" />
+                </svg>
+                <span>Edit Profile</span>
               </button>
             )}
 

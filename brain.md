@@ -2425,6 +2425,52 @@ Render Free tier runs on an ephemeral container filesystem where local files are
   - Created `backend/tests/test_supabase_storage.py` with 15 focused tests (mocked Supabase client).
   - Total automated test suite: 259 tests (**245 passed, 14 skipped** for optional local Docker services, **0 failures**).
 
+------------------------------------------------------------------------
+
+# 37. LearnVault Global EDIT / RENAME Pencil Icon Consistency & Document Metadata Editing
+
+### 1. Requirements & Scope Lock
+- **Core Requirement**: Across the entire LearnVault application, every action whose purpose is **Edit**, **Rename**, or **Modify existing metadata** uses the **SAME PENCIL / EDIT ICON** (`Heroicons pencil-square`, established by Chat Sessions: `d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a2 2 0 01-1.414.586H8v-2.414a2 2 0 01.586-1.414z"`).
+- **Strict Scope Boundaries**:
+  - Unrelated actions (**Chat**, **Quiz**, **Delete**, **More**, **View**, **Upload**, **Save**, **Cancel**, etc.) remain 100% unchanged in styling, layout, and function.
+  - Zero changes to RAG, Qdrant vectors, chunk embeddings, Supabase storage paths, authentication providers, or database schemas.
+
+### 2. Backend Metadata Editing Endpoint (`PATCH /documents/{document_id}`)
+- **Endpoint**: `PATCH /documents/{document_id}`
+- **Security & Authorization**:
+  - Requires authenticated user via `require_authenticated_user` (returns HTTP 401 if unauthenticated).
+  - Enforces strict document ownership (`doc.user_id == current_user`; returns HTTP 403 if unauthorized).
+  - Never trusts browser-supplied `user_id`.
+- **Validation**:
+  - Filename: Maximum 60 characters, non-blank, surrounding whitespace trimmed.
+  - Subject: Maximum 40 characters, non-blank, surrounding whitespace trimmed.
+  - Rejects empty payload, blank strings, or oversized inputs with HTTP 400 Bad Request.
+- **Data Safety & Integrity**:
+  - Updates only `doc.filename` and `doc.subject`.
+  - Preserves `doc.id`, `doc.page_count`, `doc.status`, `doc.file_path` (storage path), and Qdrant points.
+- **Quality Assurance**:
+  - `backend/tests/test_document_edit.py`: 17 comprehensive tests verifying all validation constraints, authorization, and data preservation.
+
+### 3. Frontend Implementation & UI Consistency
+- **Reference Icon Specification**:
+  - SVG: `w-3.5 h-3.5`, `strokeWidth={2}`, `Heroicons pencil-square`.
+  - Button styling: `p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none`.
+- **Pages & Components Unified**:
+  - `documents/page.tsx`: In "Your Study Notes" table, represents Edit using the reference pencil icon button before Delete (`title="Edit document"`, `aria-label="Edit document"`).
+  - `dashboard/page.tsx`: In "Uploaded Materials" table, uses the same reference pencil icon button before Delete for cross-table consistency.
+  - `chat/page.tsx`: Retained reference Chat Session rename pencil icon button.
+  - `quiz/page.tsx`: Aligned Quiz history topic rename pencil icon button to reference dimensions and classes.
+  - `profile/page.tsx`: Incorporated reference pencil icon inside the "Edit Profile" button without altering button layout.
+  - `components/EditDocumentModal.tsx`: Accessible dialog with live character counters (`0/60` for filename, `0/40` for subject), whitespace trimming, blank validation, loading spinner, and theme-aware styling.
+
+### 4. Application UI Rules & Regulations
+- **Consistent Representation**: Whenever the application exposes an action whose purpose is Edit, Rename, or Modify existing metadata, it must be represented using the established reference pencil icon.
+- **Accessibility Guarantee**: Every icon-only button must include a descriptive `aria-label` and `title` tooltip for screen readers and mouse users.
+- **Preserve Established Styles**: Existing action styles (`Chat`, `Quiz`, `Delete`, `Upload`, `Save`, `Cancel`, `Sign Out`) must remain unchanged. Text buttons must not be converted into icons unless their purpose is an Edit/Rename action.
+- **Global Design Parity**: Any new or updated editable entities must follow the same pencil icon conventions rather than introducing divergent iconography or ad-hoc button designs.
+- **Strict Data Isolation in Metadata Edits**: Document metadata editing is strictly confined to database record updates. It must never alter physical PDF files, Supabase storage paths, Qdrant vectors, chunk embeddings, document UUIDs, or processing lifecycle states.
+- **Active Code Alignment**: Documentation must reflect the true codebase state (FastEmbed ONNX embeddings, FastAPI in-process BackgroundTasks, SQLite/PostgreSQL fallback); it must never document unused dependencies or inactive queue architectures such as Redis/Celery.
+
 
 
 

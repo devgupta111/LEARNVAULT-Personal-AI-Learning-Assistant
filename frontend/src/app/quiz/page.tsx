@@ -684,10 +684,9 @@ function QuizComponent() {
                               onClick={() => { setEditingQuizId(item.quiz_id); setEditingTopic(item.topic); }}
                               title="Rename topic"
                               aria-label="Rename topic"
-                              className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all text-[11px] p-1 rounded-md hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] focus-visible:ring-2 focus-visible:outline-none"
-                              style={{ color: "var(--text-muted)" }}
+                              className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] active:scale-[0.98] focus-visible:ring-2 focus-visible:outline-none"
                             >
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a2 2 0 01-1.414.586H8v-2.414a2 2 0 01.586-1.414z" />
                               </svg>
                             </button>

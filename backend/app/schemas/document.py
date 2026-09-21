@@ -34,3 +34,9 @@ class DocumentDetail(BaseModel):
     error_message: Optional[str]
     created_at: datetime
     updated_at: datetime
+
+
+class UpdateDocumentRequest(BaseModel):
+    filename: Optional[str] = None
+    subject: Optional[str] = None
+

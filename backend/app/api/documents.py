@@ -25,8 +25,12 @@ from app.models.session import Session as ChatSession
 from app.models.message import Message
 from app.models.quiz import Quiz
 from app.models.quiz_attempt import QuizAttempt
-from app.schemas.document import DocumentUploadResponse, DocumentSummary, DocumentDetail
-from app.services.pdf_service import extract_text_from_pdf, is_document_fully_scanned
+from app.schemas.document import (
+    DocumentUploadResponse,
+    DocumentSummary,
+    DocumentDetail,
+    UpdateDocumentRequest,
+)
 from app.services.pipeline_service import run_ingestion_pipeline
 from app.services.document_service import (
     get_document_by_id,
@@ -37,7 +41,7 @@ from app.services.document_service import (
     document_to_detail,
 )
 from app.services.qdrant_service import delete_document_vectors
-from app.api.auth import get_current_user
+from app.api.auth import get_current_user, require_authenticated_user
 from app.services.supabase_storage_service import (
     is_supabase_configured,
     upload_document_file,
@@ -466,5 +470,83 @@ def delete_document(
     if cleanup_warnings:
         response["warnings"] = cleanup_warnings
     return response
+
+
+@router.patch("/{document_id}", response_model=DocumentSummary)
+async def update_document(
+    document_id: str,
+    payload: UpdateDocumentRequest,
+    current_user: str = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
+) -> DocumentSummary:
+    """
+    PATCH /documents/{document_id} — Update document metadata (filename, subject).
+
+    Requirements:
+      - Authenticated user required.
+      - Ownership verification required (403 if document belongs to a different user).
+      - Rejects blank values (empty or whitespace only).
+      - Trims surrounding whitespace.
+      - Filename max length: 60 characters.
+      - Subject max length: 40 characters.
+      - Updates only filename and subject.
+      - Strictly preserves document_id, page_count, status, file_path, and Qdrant data.
+    """
+    doc = get_document_by_id(db, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if doc.user_id != current_user:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to edit this document.",
+        )
+
+    if payload.filename is None and payload.subject is None:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one field (filename or subject) must be provided.",
+        )
+
+    if payload.filename is not None:
+        clean_filename = payload.filename.strip()
+        if not clean_filename:
+            raise HTTPException(
+                status_code=400,
+                detail="Filename cannot be blank.",
+            )
+        if len(clean_filename) > 60:
+            raise HTTPException(
+                status_code=400,
+                detail="Filename cannot exceed 60 characters.",
+            )
+        doc.filename = clean_filename
+
+    if payload.subject is not None:
+        clean_subject = payload.subject.strip()
+        if not clean_subject:
+            raise HTTPException(
+                status_code=400,
+                detail="Subject cannot be blank.",
+            )
+        if len(clean_subject) > 40:
+            raise HTTPException(
+                status_code=400,
+                detail="Subject cannot exceed 40 characters.",
+            )
+        doc.subject = clean_subject
+
+    db.commit()
+    db.refresh(doc)
+
+    logger.info(
+        "Document %s updated by user %s: filename='%s', subject='%s'",
+        document_id,
+        current_user,
+        doc.filename,
+        doc.subject,
+    )
+
+    return document_to_summary(doc)
 
 

@@ -236,6 +236,24 @@ export async function deleteDocument(documentId: string): Promise<void> {
   }
 }
 
+export async function updateDocument(
+  documentId: string,
+  data: { filename?: string; subject?: string }
+): Promise<DocumentSummary> {
+  const res = await authFetch(`/documents/${documentId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to update document" }));
+    throw new Error(err.detail || `Failed to update document (${res.status})`);
+  }
+
+  return res.json();
+}
+
 // ─── Sessions and Chat API ───────────────────────────────────────────────────
 
 
